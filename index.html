@@ -136,9 +136,9 @@ h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
           <div class="sub">Real-time seat availability at <b>Chula Cafeteria A</b></div>
           <div class="card">
             <div class="occ">
-              <div><strong id="availCount" style="color:var(--green)">8</strong><span class="small">available</span></div>
-              <div><strong id="occCount" style="color:var(--red)">20</strong><span class="small">occupied</span></div>
-              <div><strong id="pctCount">72%</strong><span class="small">full</span></div>
+              <div><strong id="availCount" style="color:var(--green)">17</strong><span class="small">available</span></div>
+              <div><strong id="occCount" style="color:var(--red)">15</strong><span class="small">occupied</span></div>
+              <div><strong id="pctCount">42%</strong><span class="small">full</span></div>
             </div>
             <div class="small" style="margin-top:10px">◷ Updated just now</div>
           </div>
@@ -173,9 +173,9 @@ h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
           <div class="card">
             <div class="loc-title">Live occupancy <span class="live"><span class="dot"></span>Live</span></div>
             <div class="occ" style="margin-top:10px">
-              <div><strong id="cAvail" style="color:var(--green)">7</strong><span class="small">available</span></div>
-              <div><strong id="cOcc" style="color:var(--red)">21</strong><span class="small">occupied</span></div>
-              <div><strong id="cPct">74%</strong><span class="small">full</span></div>
+              <div><strong id="cAvail" style="color:var(--green)">16</strong><span class="small">available</span></div>
+              <div><strong id="cOcc" style="color:var(--red)">16</strong><span class="small">occupied</span></div>
+              <div><strong id="cPct">44%</strong><span class="small">full</span></div>
             </div>
           </div>
           <div class="card">
@@ -246,8 +246,14 @@ h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
 <script>
 const initialTables = {
   A1:'green',A2:'red',A3:'red',A4:'green',
+  A5:'green',A6:'amber',A7:'red',A8:'green',
+  A9:'red',A10:'green',A11:'red',A12:'green',
   B1:'red',B2:'amber',B3:'green',B4:'red',
-  C1:'green',C2:'red',C3:'red',C4:'green'
+  B5:'green',B6:'red',B7:'green',B8:'red',
+  B9:'amber',B10:'green',B11:'red',B12:'green',
+  C1:'green',C2:'red',C3:'red',C4:'green',
+  C5:'red',C6:'green',C7:'amber',C8:'green',
+  C9:'green',C10:'red',C11:'green',C12:'red'
 };
 const state = {
   selected:'B3',
@@ -266,9 +272,9 @@ const state = {
 const locs = [
   {
     name:'Chula Cafeteria A',
-    available:8,
-    pct:72,
-    total:'28 / 100 seats',
+    available:68,
+    pct:42,
+    total:'60 / 144 seats occupied',
     features:['Near food','Near plug'],
     note:'Near food stalls • charging points'
   },
@@ -586,7 +592,7 @@ function openModal(){
   modalTrigger=document.activeElement;
   document.getElementById('modal').classList.add('show');
   document.querySelector('.screen').inert=true;
-  document.querySelector('#sheetContent button')?.focus();
+  document.querySelector('#sheetContent button:not([disabled])')?.focus();
 }
 function closeModal(){
   document.getElementById('modal').classList.remove('show');
@@ -831,6 +837,20 @@ function resetDemo(){
   go('home');
   toast('Prototype reset');
 }
+function showTableClaimPrompt(table){
+  if(!Object.hasOwn(state.tables,table)) return;
+  const available=state.tables[table]==='green';
+  const status=state.tables[table]==='red'?'occupied':'being cleared';
+  document.getElementById('sheetContent').innerHTML=`
+    <h2>${available?`Claim Table ${table}?`:`Table ${table} is ${status}`}</h2>
+    <span class="badge">${zoneForTable(table)} • 4 seats</span>
+    <p class="small">Your table QR code points to Table ${table} at Chula Cafeteria A.</p>
+    <p class="small">${available?'Confirm to link this table to your session.':'This table cannot be claimed right now. Check its status or choose an available table on the map.'}</p>
+    <button class="btn wide" ${available?'':'disabled style="opacity:.55;cursor:not-allowed"'} onclick="closeModal();claimSelected()">Claim Table ${table}</button>
+    <button class="btn secondary wide" onclick="closeModal()">${available?'Not now':'View map'}</button>`;
+  document.querySelector('#tableGrid .selected')?.focus({preventScroll:true});
+  openModal();
+}
 function recognizeTableLink(){
   const params=new URLSearchParams(window.location.search);
   if(!params.has('table')) return;
@@ -843,7 +863,7 @@ function recognizeTableLink(){
   state.selected=table;
   state.zone=table[0];
   go('map');
-  toast(`QR recognized: Table ${table}`);
+  showTableClaimPrompt(table);
 }
 renderLocations('Now');renderTables();renderMenu();updateOccupancy();updateSelectedCard();updateTableSession();
 recognizeTableLink();

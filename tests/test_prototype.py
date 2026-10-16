@@ -12,6 +12,17 @@ from playwright.sync_api import expect, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEMO_TABLES = {
+    "A1": "Available now", "A2": "Occupied", "A3": "Occupied", "A4": "Available now",
+    "A5": "Available now", "A6": "Being cleared", "A7": "Occupied", "A8": "Available now",
+    "A9": "Occupied", "A10": "Available now", "A11": "Occupied", "A12": "Available now",
+    "B1": "Occupied", "B2": "Being cleared", "B3": "Available now", "B4": "Occupied",
+    "B5": "Available now", "B6": "Occupied", "B7": "Available now", "B8": "Occupied",
+    "B9": "Being cleared", "B10": "Available now", "B11": "Occupied", "B12": "Available now",
+    "C1": "Available now", "C2": "Occupied", "C3": "Occupied", "C4": "Available now",
+    "C5": "Occupied", "C6": "Available now", "C7": "Being cleared", "C8": "Available now",
+    "C9": "Available now", "C10": "Occupied", "C11": "Available now", "C12": "Occupied",
+}
 
 
 class StaticHandler(SimpleHTTPRequestHandler):
@@ -62,9 +73,11 @@ class PrototypeTests(unittest.TestCase):
         self.context.close()
         self.assertEqual(self.errors, [], "Browser JavaScript errors")
 
-    def open(self, path="/"):
+    def open(self, path="/", keep_prompt=False):
         response = self.page.goto(self.base_url + path)
         self.assertEqual(response.status, 200)
+        if not keep_prompt and self.page.locator("#modal").is_visible():
+            self.page.locator("#sheetContent .secondary").click()
 
     def nav(self, page_id):
         self.page.locator(f'.nav [data-page="{page_id}"]').click()
@@ -74,8 +87,9 @@ class PrototypeTests(unittest.TestCase):
         expect(self.page.locator("section.page.active")).to_have_attribute("id", page_id)
 
     def claim(self, table="B3"):
-        self.open(f"/?table={table}")
-        self.page.locator("#selectedAction").click()
+        self.open(f"/?table={table}", keep_prompt=True)
+        self.page.get_by_role("button", name=f"Claim Table {table}", exact=True).click()
+        expect(self.page.locator("#modal")).to_be_hidden()
         self.active("claimed")
         expect(self.page.locator("#claimedTable")).to_have_text(f"Table {table}")
 
@@ -128,49 +142,143 @@ class PrototypeTests(unittest.TestCase):
         self.nav("profile")
         self.nav("home")
 
-    def test_qr_recognition_at_root_and_subpath(self):
-        cases = [
-            ("/?table=B3", "B3", "Available now", False),
-            ("/SeatSpot/?table=%20c4%20", "C4", "Available now", False),
-            ("/SeatSpot/index.html?table=A2", "A2", "Occupied", True),
-            ("/?table=B2", "B2", "Being cleared", True),
-        ]
-        for path, table, status, disabled in cases:
-            with self.subTest(path=path):
-                self.open(path)
+    def test_qr_recognition_and_claim_prompt_for_all_demo_tables(self):
+        for table, status in DEMO_TABLES.items():
+            with self.subTest(table=table):
+                self.open(f"/?table={table}", keep_prompt=True)
                 self.active("map")
                 expect(self.page.locator("#selectedName")).to_have_text(table)
                 expect(self.page.locator("#selectedStatus")).to_have_text(status)
                 expect(self.page.locator(".tab.active")).to_have_text(f"Zone {table[0]}")
+                selected = self.page.locator("#tableGrid .selected")
+                expect(selected).to_have_text(table)
+                expect(selected).to_have_attribute("aria-pressed", "true")
+                disabled = status != "Available now"
                 self.assertEqual(self.page.locator("#selectedAction").is_disabled(), disabled)
                 self.assertEqual(self.page.locator("#scannerButton").is_disabled(), disabled)
+                expect(self.page.locator("#modal")).to_be_visible()
+                heading = self.page.locator("#sheetContent h2")
+                confirm = self.page.get_by_role("button", name=f"Claim Table {table}", exact=True)
+                if disabled:
+                    expect(heading).to_contain_text(f"Table {table}")
+                    expect(heading).to_contain_text("occupied" if status == "Occupied" else "being cleared")
+                    expect(confirm).to_be_disabled()
+                    view_map = self.page.get_by_role("button", name="View map", exact=True)
+                    expect(view_map).to_be_focused()
+                    view_map.click()
+                else:
+                    expect(heading).to_have_text(f"Claim Table {table}?")
+                    expect(confirm).to_be_enabled()
+                    expect(confirm).to_be_focused()
+                    self.page.get_by_role("button", name="Not now", exact=True).click()
+                expect(self.page.locator("#modal")).to_be_hidden()
+                expect(selected).to_be_focused()
+                self.active("map")
                 expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
+                expect(self.page.locator("#availCount")).to_have_text("17")
+                expect(self.page.locator("#occCount")).to_have_text("15")
+
+    def test_qr_normalization_subpaths_and_refresh(self):
+        cases = [
+            ("/?table=b3", "B3"),
+            ("/SeatSpot/?table=%20c4%20", "C4"),
+            ("/SeatSpot/index.html?table=%20a1%20&source=qr", "A1"),
+            ("/SeatSpot/?table=%20b12%20", "B12"),
+        ]
+        for path, table in cases:
+            with self.subTest(path=path):
+                self.open(path, keep_prompt=True)
+                expect(self.page.locator("#sheetContent h2")).to_have_text(f"Claim Table {table}?")
+                self.page.reload()
+                self.active("map")
+                expect(self.page.locator("#modal")).to_be_visible()
+                expect(self.page.locator("#selectedName")).to_have_text(table)
+                expect(self.page.locator(".tab.active")).to_have_text(f"Zone {table[0]}")
+                expect(self.page.locator("#sheetContent h2")).to_have_text(f"Claim Table {table}?")
+                expect(self.page.locator("#availCount")).to_have_text("17")
+
+    def test_qr_confirmation_claims_each_available_table(self):
+        for table, status in DEMO_TABLES.items():
+            if status != "Available now":
+                continue
+            with self.subTest(table=table):
+                self.claim(table)
+                expect(self.page.locator("#claimedZone")).to_have_text(f"Zone {table[0]}")
+                expect(self.page.locator("#qrCode")).to_have_text(table)
+                expect(self.page.locator("#orderTableTitle")).to_have_text(f"Table {table}")
+                expect(self.page.locator("#cAvail")).to_have_text("16")
+                expect(self.page.locator("#cOcc")).to_have_text("16")
+                expect(self.page.locator("#cPct")).to_have_text("44%")
+                self.nav("map")
+                expect(self.page.locator("#selectedName")).to_have_text(table)
+                expect(self.page.locator("#selectedAction")).to_have_text("Leave table")
+
+    def test_qr_prompt_dismissal_keeps_selected_table_without_claiming(self):
+        for dismiss in ("Not now", "Escape", "backdrop"):
+            with self.subTest(dismiss=dismiss):
+                self.open("/?table=A4", keep_prompt=True)
+                modal = self.page.locator("#modal")
+                confirm = self.page.get_by_role("button", name="Claim Table A4", exact=True)
+                expect(confirm).to_be_focused()
+                self.page.keyboard.press("Shift+Tab")
+                expect(self.page.get_by_role("button", name="Not now", exact=True)).to_be_focused()
+                self.page.keyboard.press("Tab")
+                expect(confirm).to_be_focused()
+                self.page.locator("#sheetContent h2").click()
+                expect(modal).to_be_visible()
+                if dismiss == "Escape":
+                    self.page.keyboard.press("Escape")
+                elif dismiss == "backdrop":
+                    modal.click(position={"x": modal.bounding_box()["width"] / 2, "y": 60})
+                else:
+                    self.page.get_by_role("button", name=dismiss, exact=True).click()
+                expect(modal).to_be_hidden()
+                expect(self.page.locator("#tableGrid .selected")).to_be_focused()
+                self.active("map")
+                expect(self.page.locator("#selectedName")).to_have_text("A4")
+                expect(self.page.locator(".tab.active")).to_have_text("Zone A")
+                expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
+                expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
+                expect(self.page.locator("#availCount")).to_have_text("17")
+                expect(self.page.locator("#selectedAction")).to_be_enabled()
+                self.page.locator("#selectedAction").click()
+                self.active("claimed")
+                expect(self.page.locator("#claimedTable")).to_have_text("Table A4")
+
+    def test_default_and_unknown_table_links_do_not_show_claim_prompt(self):
+        for path in ("/", "/SeatSpot/", "/index.html?source=qr"):
+            with self.subTest(path=path):
+                self.open(path, keep_prompt=True)
+                self.active("home")
+                expect(self.page.locator("#modal")).to_be_hidden()
         for invalid in ("unknown", "", "%3Cimg%20src=x%20onerror=alert(1)%3E"):
             with self.subTest(invalid=invalid):
-                self.open(f"/SeatSpot/?table={invalid}")
+                self.open(f"/SeatSpot/?table={invalid}", keep_prompt=True)
                 self.active("map")
+                expect(self.page.locator("#modal")).to_be_hidden()
                 expect(self.page.locator("#selectedName")).to_have_text("B3")
                 expect(self.page.locator("#toast")).to_contain_text("Unknown table QR")
-                expect(self.page.locator("#tableGrid button")).to_have_count(4)
+                expect(self.page.locator("#tableGrid button")).to_have_count(12)
 
     def test_zone_claim_single_table_and_leave_counts(self):
         self.open("/?table=B3")
-        expect(self.page.locator("#availCount")).to_have_text("5")
-        expect(self.page.locator("#occCount")).to_have_text("6")
-        expect(self.page.locator("#pctCount")).to_have_text("50%")
+        expect(self.page.locator("#availCount")).to_have_text("17")
+        expect(self.page.locator("#occCount")).to_have_text("15")
+        expect(self.page.locator("#pctCount")).to_have_text("42%")
         for zone in ("A", "C", "B", "A"):
             self.page.locator(f'[data-zone="{zone}"]').click()
             self.assertEqual(self.page.locator("#tableGrid button").all_text_contents(),
-                             [f"{zone}{n}" for n in range(1, 5)])
+                             [f"{zone}{n}" for n in range(1, 13)])
+            expect(self.page.locator("#tableGrid button:visible")).to_have_count(12)
             expect(self.page.locator("#selectedMeta")).to_contain_text(f"Zone {zone}")
         self.page.get_by_role("button", name="Table A4, available", exact=True).click()
         self.page.locator("#selectedAction").click()
         self.active("claimed")
         expect(self.page.locator("#claimedTable")).to_have_text("Table A4")
         expect(self.page.locator("#claimedZone")).to_have_text("Zone A")
-        expect(self.page.locator("#cAvail")).to_have_text("4")
-        expect(self.page.locator("#cOcc")).to_have_text("7")
-        expect(self.page.locator("#cPct")).to_have_text("58%")
+        expect(self.page.locator("#cAvail")).to_have_text("16")
+        expect(self.page.locator("#cOcc")).to_have_text("16")
+        expect(self.page.locator("#cPct")).to_have_text("44%")
         self.nav("map")
         self.page.get_by_role("button", name="Table A1, available", exact=True).click()
         expect(self.page.locator("#selectedAction")).to_be_disabled()
@@ -178,13 +286,41 @@ class PrototypeTests(unittest.TestCase):
         expect(self.page.locator("#scannerButton")).to_be_disabled()
         self.nav("home")
         cafeteria = self.page.locator("#locations .card").filter(has_text="Chula Cafeteria A")
-        expect(cafeteria.locator(".available")).to_contain_text("16")
+        expect(cafeteria.locator(".available")).to_contain_text("64")
         self.nav("map")
         expect(self.page.locator("#selectedName")).to_have_text("A4")
         self.page.locator("#selectedAction").click()
         expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
-        expect(self.page.locator("#availCount")).to_have_text("5")
-        expect(self.page.locator("#occCount")).to_have_text("6")
+        expect(self.page.locator("#availCount")).to_have_text("17")
+        expect(self.page.locator("#occCount")).to_have_text("15")
+
+    def test_new_last_row_table_claim_and_reset_restore_expanded_map(self):
+        self.open("/?table=A1")
+        self.page.get_by_role("button", name="Table A12, available", exact=True).click()
+        expect(self.page.locator("#selectedName")).to_have_text("A12")
+        expect(self.page.locator("#selectedMeta")).to_contain_text("Zone A")
+        self.page.locator("#selectedAction").click()
+        self.active("claimed")
+        expect(self.page.locator("#claimedTable")).to_have_text("Table A12")
+        expect(self.page.locator("#claimedZone")).to_have_text("Zone A")
+        expect(self.page.locator("#cAvail")).to_have_text("16")
+        expect(self.page.locator("#cOcc")).to_have_text("16")
+        self.nav("profile")
+        self.page.get_by_role("button", name="Reset prototype", exact=True).click()
+        self.active("home")
+        cafeteria = self.page.locator("#locations .card").filter(has_text="Chula Cafeteria A")
+        expect(cafeteria.locator(".available")).to_contain_text("68")
+        expect(cafeteria).to_contain_text("60 / 144 seats occupied")
+        self.nav("map")
+        expect(self.page.locator("#availCount")).to_have_text("17")
+        expect(self.page.locator("#occCount")).to_have_text("15")
+        expect(self.page.locator("#pctCount")).to_have_text("42%")
+        self.page.locator('[data-zone="A"]').click()
+        expect(self.page.locator("#tableGrid button")).to_have_count(12)
+        last_table = self.page.get_by_role("button", name="Table A12, available", exact=True)
+        last_table.click()
+        expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
+        expect(self.page.locator("#selectedAction")).to_have_text("Claim table")
 
     def test_scan_modal_cancel_escape_backdrop_focus_and_claim(self):
         self.open("/?table=B3")
@@ -277,17 +413,24 @@ class PrototypeTests(unittest.TestCase):
                 expect(self.page.locator(".progress .active")).to_have_count(0)
                 expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
                 self.nav("map")
-                expect(self.page.locator("#availCount")).to_have_text("5")
+                expect(self.page.locator("#availCount")).to_have_text("17")
                 expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
 
     def test_mobile_and_desktop_controls_fit_without_horizontal_overflow(self):
         for width in (320, 375, 390, 430, 1280):
             with self.subTest(width=width):
                 self.page.set_viewport_size({"width": width, "height": 852})
-                self.open("/?table=B3")
+                self.open("/?table=B12")
                 self.assert_main_fits()
+                expect(self.page.locator("#tableGrid button:visible")).to_have_count(12)
                 self.assert_controls_fit("#tableGrid button")
-                self.page.get_by_role("button", name="Table B3, available", exact=True).click()
+                self.page.get_by_role("button", name="Table B12, available", exact=True).click()
+                expect(self.page.locator("#selectedName")).to_have_text("B12")
+                self.page.locator("#selectedAction").click()
+                self.active("claimed")
+                expect(self.page.locator("#claimedTable")).to_have_text("Table B12")
+                expect(self.page.locator("#claimedZone")).to_have_text("Zone B")
+                self.assert_main_fits()
                 self.nav("orders")
                 self.assert_main_fits()
                 self.assert_controls_fit("#menu button")
