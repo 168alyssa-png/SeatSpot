@@ -5,6 +5,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 import os
+import re
 import shutil
 import unittest
 
@@ -340,16 +341,30 @@ class PrototypeTests(unittest.TestCase):
     def test_scan_modal_cancel_escape_backdrop_focus_and_claim(self):
         self.open("/?table=B3")
         trigger = self.page.locator("#scannerButton")
+        expect(trigger).to_have_text("📷 Scan table QR")
+        expect(self.page.get_by_role("button", name=re.compile("Simulate QR scan"))).to_have_count(0)
         trigger.click()
         modal = self.page.get_by_role("dialog")
-        scan = self.page.get_by_role("button", name="Scan B3", exact=True)
-        cancel = self.page.get_by_role("button", name="Cancel", exact=True)
+        manual = self.page.get_by_role("button", name="Choose table manually", exact=True)
+        cancel = self.page.get_by_role("button", name="Cancel scanner", exact=True)
+        retry = self.page.get_by_role("button", name="Try camera again", exact=True)
         expect(modal).to_be_visible()
-        expect(scan).to_be_focused()
+        expect(self.page.locator("#sheetContent h2")).to_have_text("Scan your table QR")
+        expect(self.page.locator("#scannerVideo")).to_have_count(1)
+        expect(self.page.get_by_role("button", name="Scan B3", exact=True)).to_have_count(0)
+        expect(manual).to_be_focused()
+        # No camera is supplied to this browser. Exercise the real scanner's
+        # permission/device fallback rather than replacing QR decoding.
+        expect(retry).to_be_visible()
+        expect(self.page.locator("#scannerStatus")).to_contain_text(
+            re.compile("permission was denied|No camera was found|unavailable")
+        )
+        self.page.keyboard.press("Shift+Tab")
+        expect(retry).to_be_focused()
         self.page.keyboard.press("Shift+Tab")
         expect(cancel).to_be_focused()
         self.page.keyboard.press("Tab")
-        expect(scan).to_be_focused()
+        expect(retry).to_be_focused()
         self.page.keyboard.press("Escape")
         expect(modal).to_be_hidden()
         expect(trigger).to_be_focused()
@@ -364,7 +379,15 @@ class PrototypeTests(unittest.TestCase):
         expect(modal).to_be_hidden()
         expect(trigger).to_be_focused()
         trigger.click()
-        scan.click()
+        manual.click()
+        expect(modal).to_be_hidden()
+        expect(trigger).to_be_focused()
+        self.active("map")
+        expect(self.page.locator("#selectedName")).to_have_text("B3")
+        expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
+        expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
+        expect(self.page.locator("#availCount")).to_have_text("17")
+        self.page.locator("#selectedAction").click()
         self.active("claimed")
         expect(self.page.locator("#claimedTable")).to_have_text("Table B3")
 
@@ -482,9 +505,19 @@ class PrototypeTests(unittest.TestCase):
                 self.assert_dialog_fits()
                 self.click_modal_backdrop()
                 expect(self.page.locator("#modal")).to_be_hidden()
+                expect(self.page.locator("#scannerButton")).to_have_text("📷 Scan table QR")
                 self.page.locator("#scannerButton").click()
+                expect(self.page.locator("#sheetContent h2")).to_have_text("Scan your table QR")
+                expect(self.page.locator("#scannerVideo")).to_have_count(1)
+                expect(self.page.get_by_role("button", name="Scan B12", exact=True)).to_have_count(0)
                 self.assert_dialog_fits()
-                self.page.get_by_role("button", name="Scan B12", exact=True).click()
+                self.page.get_by_role("button", name="Choose table manually", exact=True).click()
+                expect(self.page.locator("#modal")).to_be_hidden()
+                self.active("map")
+                expect(self.page.locator("#selectedName")).to_have_text("B12")
+                expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
+                expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
+                self.page.locator("#selectedAction").click()
                 self.active("claimed")
                 self.nav("orders")
                 self.item("Chocolate Chip Cookie").locator(".plus").click()

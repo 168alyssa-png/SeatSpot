@@ -152,6 +152,198 @@ class ScannerTests(unittest.TestCase):
         expect(self.page.locator(".tab.active")).to_have_text(f"Zone {table[0]}")
         expect(self.page.locator("#tableGrid .selected")).to_have_text(table)
 
+    def select_map_table(self, table="B3"):
+        self.page.locator('.nav [data-page="map"]').click()
+        self.page.locator(f'[data-zone="{table[0]}"]').click()
+        self.page.get_by_role("button", name=f"Table {table}, available", exact=True).click()
+        expect(self.page.locator("#selectedName")).to_have_text(table)
+        expect(self.page.locator("#scannerButton")).to_have_text("📷 Scan table QR")
+
+    def expect_verified_claim_prompt(self, table):
+        expect(self.page.locator("#sheetContent h2")).to_have_text(f"Claim Table {table}?")
+        expect(self.page.locator("#sheetContent")).to_contain_text(f"Table {table} verified ✓")
+        expect(self.page.locator("#selectedName")).to_have_text(table)
+        expect(self.page.locator("#tableGrid .selected")).to_have_text(table)
+        expect(self.page.locator("#claimedTable")).to_have_text("No table")
+        expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
+        expect(self.page.get_by_role("button", name=f"Claim Table {table}", exact=True)).to_be_enabled()
+
+    def expect_table_mismatch(self, scanned, selected="B3"):
+        expect(self.page.locator("#sheetContent")).to_contain_text(
+            f"This QR belongs to Table {scanned}, but you selected {selected}."
+        )
+        expect(self.page.get_by_role("button", name="Scan again", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("button", name=f"View {scanned}", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("button", name="Cancel scanner", exact=True)).to_be_visible()
+        expect(self.page.locator("#selectedName")).to_have_text(selected)
+        expect(self.page.locator("#tableGrid .selected")).to_have_text(selected)
+        expect(self.page.locator("#claimedTable")).to_have_text("No table")
+        expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
+        expect(self.page.get_by_role("button", name=re.compile(r"^Claim Table "))).to_have_count(0)
+        self.expect_all_tracks_stopped()
+
+    def test_map_real_camera_verifies_selected_tables_then_claims_orders_and_leaves(self):
+        for fixture, table, width in (("table-b3", "B3", 390), ("table-b12", "B12", 320)):
+            with self.subTest(table=table, width=width):
+                self.open_camera_page(fixture, viewport={"width": width, "height": 844})
+                self.select_map_table(table)
+                self.page.locator("#scannerButton").click()
+                self.expect_verified_claim_prompt(table)
+                self.expect_all_tracks_stopped()
+                self.assertEqual(self.page.evaluate("cameraRequests.length"), 1)
+                request = self.page.evaluate("cameraRequests[0]")
+                self.assertFalse(request["audio"])
+                self.assertIn("environment", str(request["video"]))
+                self.page.get_by_role("button", name=f"Claim Table {table}", exact=True).click()
+                expect(self.page.locator("#claimedTable")).to_have_text(f"Table {table}")
+                self.page.locator('.nav [data-page="orders"]').click()
+                cookie = self.page.locator("#menu .item").filter(has_text="Chocolate Chip Cookie")
+                cookie.locator(".plus").click()
+                self.page.locator("#cartAction").click()
+                self.page.get_by_role("button", name="Place demo order", exact=True).click()
+                expect(self.page.locator("#cartSummary")).to_contain_text("Order placed")
+                self.page.locator('.nav [data-page="map"]').click()
+                self.page.locator("#selectedAction").click()
+                expect(self.page.locator("#claimedTable")).to_have_text("No table")
+                expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
+                expect(self.page.locator("#scannerButton")).to_be_enabled()
+
+    def test_map_mismatch_preserves_selection_and_url_until_viewing_scanned_table(self):
+        for fixture, scanned, status, width in (
+            ("table-a2", "A2", "Occupied", 320),
+            ("table-b12", "B12", "Available now", 390),
+        ):
+            with self.subTest(scanned=scanned):
+                self.open_camera_page(fixture, viewport={"width": width, "height": 844})
+                self.select_map_table()
+                original_url = self.page.url
+                original_counts = self.page.locator("#availCount").text_content()
+                self.page.locator("#scannerButton").click()
+                self.expect_table_mismatch(scanned)
+                self.assertEqual(self.page.url, original_url)
+                expect(self.page.locator("#availCount")).to_have_text(original_counts)
+                self.page.get_by_role("button", name=f"View {scanned}", exact=True).click()
+                expect(self.page.locator("#modal")).to_be_hidden()
+                expect(self.page.locator("section.page.active")).to_have_attribute("id", "map")
+                expect(self.page.locator("#selectedName")).to_have_text(scanned)
+                expect(self.page.locator(".tab.active")).to_have_text(f"Zone {scanned[0]}")
+                expect(self.page.locator("#tableGrid .selected")).to_have_text(scanned)
+                expect(self.page.locator("#selectedStatus")).to_have_text(status)
+                expect(self.page.locator("#claimedTable")).to_have_text("No table")
+                expect(self.page.locator("#availCount")).to_have_text(original_counts)
+                if status == "Occupied":
+                    expect(self.page.locator("#selectedAction")).to_be_disabled()
+                    expect(self.page.locator("#scannerButton")).to_be_disabled()
+                else:
+                    expect(self.page.locator("#selectedAction")).to_be_enabled()
+                    # A new map scan must snapshot this newly selected table,
+                    # rather than retaining B3 from the previous mismatch.
+                    self.page.locator("#scannerButton").click()
+                    self.expect_verified_claim_prompt(scanned)
+                    self.expect_all_tracks_stopped()
+                    self.assertEqual(self.page.evaluate("cameraRequests.length"), 2)
+
+    def test_map_scan_again_retains_original_table_and_opens_only_one_new_camera(self):
+        self.open_camera_page("table-a2")
+        self.select_map_table()
+        original_url = self.page.url
+        self.page.locator("#scannerButton").click()
+        self.expect_table_mismatch("A2")
+        self.page.get_by_role("button", name="Scan again", exact=True).evaluate(
+            "button => { button.click(); button.click(); }"
+        )
+        self.page.wait_for_function("cameraRequests.length >= 2")
+        self.expect_table_mismatch("A2")
+        self.assertEqual(self.page.evaluate("cameraRequests.length"), 2)
+        self.assertEqual(self.page.url, original_url)
+        self.page.get_by_role("button", name="Cancel scanner", exact=True).click()
+        expect(self.page.locator("#modal")).to_be_hidden()
+        expect(self.page.locator("#scannerButton")).to_be_focused()
+        # Home scanning must remain unrestricted after a map verification scan.
+        self.page.locator('.nav [data-page="home"]').click()
+        self.start_scanner()
+        expect(self.page.locator("#sheetContent h2")).to_have_text("Table A2 is occupied")
+        expect(self.page.locator("#selectedName")).to_have_text("A2")
+        self.expect_all_tracks_stopped()
+
+    def test_map_permission_denied_retry_retains_expected_table(self):
+        self.open_camera_page("table-a2", init_script="""(() => {
+          let denied = false;
+          const recordCamera = navigator.mediaDevices.getUserMedia;
+          navigator.mediaDevices.getUserMedia = constraints => {
+            if (!denied) {
+              denied = true;
+              return Promise.reject(new DOMException('Camera denied', 'NotAllowedError'));
+            }
+            return recordCamera(constraints);
+          };
+        })()""")
+        self.select_map_table()
+        original_url = self.page.url
+        self.page.locator("#scannerButton").click()
+        expect(self.page.locator("#scannerStatus")).to_contain_text(re.compile(r"permission|allow|denied", re.I))
+        expect(self.page.get_by_role("button", name="Choose table manually", exact=True)).to_be_visible()
+        self.page.get_by_role("button", name="Try camera again", exact=True).click()
+        self.expect_table_mismatch("A2")
+        self.assertEqual(self.page.url, original_url)
+        self.assertEqual(self.page.evaluate("cameraRequests.length"), 1)
+
+    def test_map_cancel_escape_backdrop_and_manual_choice_stop_camera(self):
+        self.open_camera_page()
+        self.select_map_table()
+        for dismiss in ("Cancel scanner", "Escape", "backdrop", "Choose table manually"):
+            with self.subTest(dismiss=dismiss):
+                self.page.locator("#scannerButton").click()
+                self.expect_camera_live()
+                if dismiss == "Escape":
+                    self.page.keyboard.press("Escape")
+                elif dismiss == "backdrop":
+                    self.page.locator("#modal").click(position={"x": 2, "y": 2})
+                else:
+                    self.page.get_by_role("button", name=dismiss, exact=True).click()
+                expect(self.page.locator("#modal")).to_be_hidden()
+                self.expect_all_tracks_stopped()
+                expect(self.page.locator("#selectedName")).to_have_text("B3")
+                expect(self.page.locator("#claimedTable")).to_have_text("No table")
+                if dismiss != "Choose table manually":
+                    expect(self.page.locator("#scannerButton")).to_be_focused()
+
+    def test_map_duplicate_open_and_stale_permission_keep_latest_selected_table(self):
+        self.open_camera_page(init_script="""(() => {
+          window.pendingCameras = [];
+          navigator.mediaDevices.getUserMedia = constraints => {
+            cameraRequests.push(constraints);
+            return new Promise(resolve => pendingCameras.push(resolve));
+          };
+          window.resolvedCameras = {};
+          window.resolveCamera = async index => {
+            const stream = await nativeGetUserMedia({video: true, audio: false});
+            cameraStreams.push(stream);
+            resolvedCameras[index] = stream;
+            pendingCameras[index](stream);
+          };
+        })()""")
+        self.select_map_table()
+        button = self.page.locator("#scannerButton")
+        button.evaluate("button => { button.click(); button.click(); }")
+        self.page.wait_for_function("pendingCameras.length > 0")
+        self.assertEqual(self.page.evaluate("pendingCameras.length"), 1)
+        self.page.get_by_role("button", name="Cancel scanner", exact=True).click()
+        self.select_map_table("B12")
+        button.evaluate("button => { button.click(); button.click(); }")
+        self.page.wait_for_function("pendingCameras.length === 2")
+        self.page.evaluate("resolveCamera(1)")
+        self.expect_camera_live()
+        self.page.evaluate("resolveCamera(0)")
+        self.page.wait_for_function("resolvedCameras[0].getTracks().every(t => t.readyState === 'ended')")
+        self.assertTrue(self.page.evaluate("resolvedCameras[1].getTracks().every(t => t.readyState === 'live')"))
+        self.expect_camera_live()
+        expect(self.page.locator("#selectedName")).to_have_text("B12")
+        expect(self.page.locator("#claimedTable")).to_have_text("No table")
+        self.assertEqual(self.page.evaluate("cameraRequests.length"), 2)
+        self.page.get_by_role("button", name="Cancel scanner", exact=True).click()
+        self.expect_all_tracks_stopped()
+
     def test_real_camera_decodes_public_and_relative_urls_and_claims_tables(self):
         for fixture, table in (("table-b3", "B3"), ("table-b12", "B12")):
             with self.subTest(table=table):

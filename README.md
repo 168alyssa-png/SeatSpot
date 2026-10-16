@@ -25,13 +25,15 @@ https://seatspot-zi36.vercel.app/?table=B12
 
 Opening a table link selects that table, switches to the correct zone, opens its map, and shows a claim prompt. For an available table, press **Claim Table B3** (or the matching table ID) to check in, or **Not now** to keep browsing without claiming it. Occupied and clearing tables show their status with claiming disabled and a **View map** button. The live map has 36 tables, with 12 in each zone: A1–A12, B1–B12, and C1–C12. All IDs support table links (for example, `?table=B12`); lower-case IDs are accepted, and unknown IDs show a message without claiming anything. The same links work under a hosting subdirectory and after a refresh.
 
-Generate a separate QR image for each full table URL. A QR printed for B3 should encode the complete URL above, not the bare table name. Visitors can scan it inside SeatSpot or use their phone's camera to open the table link directly. The live map's existing **Simulate QR scan** remains available for demonstrations without a camera.
+Generate a separate QR image for each full table URL. A QR printed for B3 should encode the complete URL above, not the bare table name. Visitors can scan it inside SeatSpot or use their phone's camera to open the table link directly. Both Home and the live map use the real camera scanner; the map checks that the QR matches the selected table.
 
 ## In-page camera scanner
 
 1. On Home, tap **Scan table QR** and allow the browser to use the camera. SeatSpot requests the rear camera without microphone access and displays the live video inside its existing dialog.
 2. Point the camera at a table QR. A known ID on the current site's origin or the production origin above is accepted; relative links such as `?table=B12` also work. Unrelated sites, missing or duplicate table parameters, and unknown IDs are rejected while scanning continues.
 3. On detection, the camera stops, the correct zone and table are selected, and **Table B3 detected** appears with the normal claim prompt. Confirm the claim to continue ordering. Unavailable tables retain their existing restrictions, and a visitor must leave their current table before scanning another.
+
+On the live map, select an available table and tap **Scan table QR**. The scanner remembers that selection throughout camera retries. A matching code stops the camera and shows **Table B3 verified ✓** with the existing claim prompt. A different valid table code stops the camera and explains, for example, **This QR belongs to Table A2, but you selected B3.** Neither table is claimed and the original selection stays unchanged. **Scan again** retries verification for B3; **View A2** opens A2 on the map without claiming it, respecting its occupied/clearing status. The Home scanner continues to detect any valid table without requiring a prior selection. The old simulated scan behavior has been removed.
 
 **Cancel scanner**, Escape, clicking the dialog backdrop, or choosing **Choose table manually** releases the camera. It also stops when the page is hidden or left. A late camera-permission response after cancellation is released immediately. Permission denial, a missing/busy camera, unsupported browsers, and insecure HTTP show an explanatory message with retry and manual-selection options. If permission was previously denied, enable camera access for SeatSpot in the browser's site settings before retrying.
 
@@ -75,7 +77,7 @@ The tests use `CHROMIUM_EXECUTABLE`, a system `chromium`/`google-chrome`, or a P
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-The suite starts and stops its own local server. It checks navigation, filters and search, zones, table claims and release, order totals and timed progress, pickup, modal controls, reset, table links, and narrow-screen layouts. Scanner tests feed actual QR frames through Chromium's native camera/video pipeline and the bundled decoder; error and cancellation tests control media-device responses. The committed PNG fixtures are converted to camera video in a temporary directory with the Python standard library, with no extra test dependencies. No running development server is needed for tests.
+The suite starts and stops its own local server. It checks navigation, filters and search, zones, table claims and release, order totals and timed progress, pickup, modal controls, reset, table links, and narrow-screen layouts. Scanner tests feed actual QR frames through Chromium's native camera/video pipeline and the bundled decoder, including map matches, mismatches, Scan again, and viewing a different table without claiming it; error and cancellation tests control media-device responses. The committed PNG fixtures are converted to camera video in a temporary directory with the Python standard library, with no extra test dependencies. No running development server is needed for tests.
 
 After deployment, check physical iPhone Safari and Android Chrome: first-use Allow, rear-camera preview and QR detection, Deny and retry via site settings, Cancel/manual selection, and switching away from the page. Automated tests cannot certify phone hardware or operating-system permission dialogs.
 

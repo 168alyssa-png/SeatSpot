@@ -197,7 +197,7 @@ h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
             </div>
             <button class="btn" id="selectedAction" onclick="handleSelectedAction()">Claim table</button>
           </div>
-          <button class="btn secondary wide" id="scannerButton" onclick="showScanner()">📷 Simulate QR scan</button>
+          <button class="btn secondary wide" id="scannerButton" onclick="startSelectedTableScanner()">📷 Scan table QR</button>
           </aside>
           </div>
         </section>
@@ -479,7 +479,7 @@ function updateSelectedCard(){
     badge.style.background='#e7f7ee';
     badge.style.color='var(--green)';
     action.textContent='Claim table';
-    scanner.textContent='📷 Simulate QR scan';
+    scanner.textContent='📷 Scan table QR';
   } else if(status==='amber'){
     badge.textContent='Being cleared';
     badge.style.background='#fff2d8';
@@ -596,7 +596,7 @@ function claimSelected(){
   go('claimed');
   toast(`${n} claimed successfully`);
 }
-const cameraScan={active:false,run:0,stream:null,video:null,timer:null};
+const cameraScan={active:false,run:0,stream:null,video:null,timer:null,expectedTable:null};
 
 function stopCameraScanner(){
   cameraScan.active=false;
@@ -658,7 +658,40 @@ function chooseTableManually(){
   toast('Choose an available table on the map');
 }
 
+function startSelectedTableScanner(){
+  return startCameraScanner(state.selected);
+}
+
+function retryCameraScanner(){
+  return startCameraScanner(cameraScan.expectedTable);
+}
+
+function viewScannedTable(table){
+  if(!Object.hasOwn(state.tables,table)) return;
+  closeModal();
+  state.selected=table;
+  state.zone=table[0];
+  go('map');
+  document.querySelector('#tableGrid .selected')?.focus({preventScroll:true});
+}
+
+function showTableMismatch(table,expected){
+  stopCameraScanner();
+  document.getElementById('sheetContent').innerHTML=`
+    <h2>Table QR does not match</h2>
+    <p class="small scanner-status" id="scannerStatus" role="status">This QR belongs to Table ${table}, but you selected ${expected}.</p>
+    <button class="btn wide" onclick="retryCameraScanner()">Scan again</button>
+    <button class="btn secondary wide" onclick="viewScannedTable('${table}')">View ${table}</button>
+    <button class="btn secondary wide" onclick="closeModal()">Cancel scanner</button>`;
+  document.querySelector('#sheetContent button')?.focus();
+}
+
 function finishCameraScan(table){
+  const expected=cameraScan.expectedTable;
+  if(expected && table!==expected){
+    showTableMismatch(table,expected);
+    return;
+  }
   closeModal();
   state.selected=table;
   state.zone=table[0];
@@ -666,10 +699,10 @@ function finishCameraScan(table){
   url.searchParams.set('table',table);
   window.history.replaceState(null,'',url);
   go('map');
-  showTableClaimPrompt(table,true);
+  showTableClaimPrompt(table,true,expected!==null);
 }
 
-async function startCameraScanner(){
+async function startCameraScanner(expectedTable=null){
   // A second tap must not open a second stream or permission request.
   if(cameraScan.active) return;
   if(state.claimed){
@@ -677,15 +710,21 @@ async function startCameraScanner(){
     toast(`Leave ${state.claimed} before scanning another table`);
     return;
   }
+  if(expectedTable!==null && (!Object.hasOwn(state.tables,expectedTable) || state.tables[expectedTable]!=='green')){
+    toast('Choose an available table before scanning its QR');
+    return;
+  }
   stopCameraScanner();
+  // Snapshot the map selection; retries must verify this same table.
+  cameraScan.expectedTable=expectedTable;
   const run=cameraScan.run;
   cameraScan.active=true;
   document.getElementById('sheetContent').innerHTML=`
     <h2>Scan your table QR</h2>
-    <p class="small">Point your camera at the QR code on the table.</p>
+    <p class="small">${expectedTable?`Point your camera at the QR code on Table ${expectedTable}.`:'Point your camera at the QR code on the table.'}</p>
     <div class="scanner-preview"><video id="scannerVideo" autoplay muted playsinline aria-label="Live camera preview"></video></div>
     <p class="small scanner-status" id="scannerStatus" role="status" aria-live="polite">Requesting camera permission…</p>
-    <button class="btn wide" id="retryCamera" hidden onclick="startCameraScanner()">Try camera again</button>
+    <button class="btn wide" id="retryCamera" hidden onclick="retryCameraScanner()">Try camera again</button>
     <button class="btn secondary wide" onclick="chooseTableManually()">Choose table manually</button>
     <button class="btn secondary wide" onclick="closeModal()">Cancel scanner</button>`;
   // Keep the original page control as the focus-return target when retrying.
@@ -728,7 +767,7 @@ async function startCameraScanner(){
     preview=true;
     await video.play();
     if(!cameraScan.active || run!==cameraScan.run) return;
-    scannerMessage('Point your camera at a SeatSpot table QR code.');
+    scannerMessage(expectedTable?`Scan the QR attached to Table ${expectedTable}.`:'Point your camera at a SeatSpot table QR code.');
     const canvas=document.createElement('canvas');
     const context=canvas.getContext('2d',{willReadFrequently:true});
     if(!context) throw new Error('Camera preview unavailable');
@@ -768,30 +807,6 @@ window.addEventListener('pagehide',()=>{
   if(cameraScan.active) closeModal();
 });
 
-function showScanner(){
-  if(state.claimed){
-    if(state.claimed===state.selected){
-      toast(`${state.claimed} is already checked in as your table`);
-      return;
-    }
-    toast(`Leave ${state.claimed} before scanning another table`);
-    return;
-  }
-
-  const status=state.tables[state.selected];
-  if(status!=='green'){
-    toast(status==='red'?`${state.selected} is occupied`:`${state.selected} is being cleared`);
-    return;
-  }
-
-  document.getElementById('sheetContent').innerHTML=`
-    <h2>Scan table QR</h2>
-    <p class="small">For the showcase, this simulates scanning the QR code attached to Table ${state.selected}.</p>
-    <div style="font-size:72px;text-align:center;margin:18px">▣</div>
-    <button class="btn wide" onclick="closeModal();claimSelected()">Scan ${state.selected}</button>
-    <button class="btn secondary wide" onclick="closeModal()">Cancel</button>`;
-  openModal();
-}
 let modalTrigger=null;
 function openModal(){
   modalTrigger=document.activeElement;
@@ -802,6 +817,7 @@ function openModal(){
 }
 function closeModal(){
   stopCameraScanner();
+  cameraScan.expectedTable=null;
   document.getElementById('modal').classList.remove('show');
   document.querySelector('.screen').inert=false;
   document.body.classList.remove('modal-open');
@@ -1046,12 +1062,12 @@ function resetDemo(){
   go('home');
   toast('Prototype reset');
 }
-function showTableClaimPrompt(table,detected=false){
+function showTableClaimPrompt(table,detected=false,verified=false){
   if(!Object.hasOwn(state.tables,table)) return;
   const available=state.tables[table]==='green';
   const status=state.tables[table]==='red'?'occupied':'being cleared';
   document.getElementById('sheetContent').innerHTML=`
-    ${detected?`<p class="scanner-detected" role="status">✓ Table ${table} detected</p>`:''}
+    ${verified?`<p class="scanner-detected" role="status">Table ${table} verified ✓</p>`:detected?`<p class="scanner-detected" role="status">✓ Table ${table} detected</p>`:''}
     <h2>${available?`Claim Table ${table}?`:`Table ${table} is ${status}`}</h2>
     <span class="badge">${zoneForTable(table)} • 4 seats</span>
     <p class="small">Your table QR code points to Table ${table} at Chula Cafeteria A.</p>
