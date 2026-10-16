@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="description" content="Explore the SeatSpot interactive demo: find a table, check in, and try ordering from Cookie Corner."/>
+<meta name="theme-color" content="#0b6b46"/>
+<link rel="icon" href="data:,"/>
+<title>SeatSpot Interactive Prototype</title>
+<style>
+:root{
+  --green:#0b6b46;
+  --green2:#15945f;
+  --mint:#eaf7f0;
+  --red:#ff474f;
+  --amber:#f4ad2d;
+  --ink:#0c1726;
+  --muted:#748094;
+  --line:#e8edf1;
+  --bg:#f5f7f8;
+  --card:#fff;
+  --shadow:0 10px 30px rgba(18,42,35,.08);
+  --radius:24px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:linear-gradient(180deg,#f2f5f3,#eef2f4);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif;
+  color:var(--ink);
+}
+.shell{
+  min-height:100vh;display:grid;place-items:center;padding:24px;
+}
+.phone{
+  width:min(430px,100%);height:min(890px,94vh);background:#fff;border:10px solid #171717;
+  border-radius:48px;box-shadow:0 25px 70px rgba(0,0,0,.18);overflow:hidden;position:relative;
+}
+.screen{height:100%;display:flex;flex-direction:column;background:#fff}
+.status{
+  height:38px;padding:10px 22px 0;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;
+}
+.island{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:105px;height:30px;background:#000;border-radius:18px;z-index:4}
+.header{padding:10px 22px 0;display:flex;justify-content:space-between;align-items:center}
+.brand{font-size:28px;font-weight:800;letter-spacing:-1.1px}.brand span{color:var(--green)}
+.bell{width:42px;height:42px;border-radius:50%;background:#f3f6f6;display:grid;place-items:center;font-size:20px}
+.bell{border:0;cursor:pointer}
+.main{flex:1;overflow:auto;padding:12px 18px 95px;scroll-behavior:smooth}
+.main::-webkit-scrollbar{width:0}
+h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
+.sub{color:var(--muted);font-size:16px;margin-bottom:18px}
+.search{height:54px;border:1px solid var(--line);border-radius:18px;background:#fafbfb;display:flex;align-items:center;gap:10px;padding:0 16px;color:var(--muted)}
+.search input{width:100%;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:var(--ink)}
+.search input::placeholder{color:var(--muted)}
+.search:focus-within{outline:2px solid var(--green);outline-offset:2px}
+.filters{display:flex;gap:8px;overflow:auto;padding:12px 0 4px}.chip{white-space:nowrap;border:0;border-radius:999px;padding:10px 14px;background:#f2f4f5;color:#5c6677;font-weight:700;cursor:pointer}.chip.active{background:#daf4e6;color:#164c35}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px;margin:12px 0;box-shadow:0 4px 16px rgba(20,60,45,.04)}
+.loc-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.loc-title{font-size:19px;font-weight:800}.live{display:inline-flex;align-items:center;gap:6px;background:#e6f7ed;color:#176b47;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800}.dot{width:8px;height:8px;border-radius:50%;background:#19a663}
+.metric{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px}.available{font-size:26px;font-weight:850;color:var(--green)}.full{font-weight:800}
+.bar{height:10px;background:#edf0f2;border-radius:999px;overflow:hidden;margin:9px 0}.fill{height:100%;border-radius:999px}
+.btn{border:0;border-radius:16px;background:var(--green);color:#fff;font-weight:800;padding:13px 16px;cursor:pointer}
+.btn.secondary{background:#f4f7f5;color:var(--ink);border:1px solid var(--line)}
+.btn.wide{width:100%;font-size:16px}
+.row{display:flex;gap:10px;align-items:center}.between{justify-content:space-between}
+.small{font-size:13px;color:var(--muted)}
+.section-title{font-size:24px;font-weight:850;margin:24px 0 10px}
+.how{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}.how .bubble{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;margin:0 auto 8px;background:#edf8f2;font-size:24px}.how b{font-size:12px}.how p{font-size:11px;color:var(--muted);margin:4px 0 0}
+.nav{height:76px;position:absolute;bottom:0;left:0;right:0;background:rgba(255,255,255,.98);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding:8px 8px 12px;z-index:6}
+.nav button{border:0;background:transparent;color:#7e8999;font-size:11px;font-weight:700;cursor:pointer}.nav .ico{font-size:22px;display:block;margin-bottom:4px}.nav button.active{color:var(--green)}
+.page{display:none}.page.active{display:block}
+.occ{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.occ>div{background:#fafbfb;border-radius:18px;padding:12px;text-align:center;border:1px solid var(--line)}.occ strong{display:block;font-size:26px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;background:#f1f3f4;border-radius:16px;padding:4px;margin:12px 0}.tab{border:0;border-radius:12px;padding:11px;background:transparent;font-weight:800;color:#667181;cursor:pointer}.tab.active{background:var(--green);color:#fff}
+.map{background:#efe8dc;border-radius:24px;padding:16px;position:relative;border:1px solid #e3ddd2}
+.counter{text-align:center;background:#e3ded5;border-radius:12px;padding:10px;font-weight:800;margin-bottom:15px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 10px}
+.table{aspect-ratio:1/1;border-radius:50%;display:grid;place-items:center;color:white;font-weight:850;cursor:pointer;box-shadow:inset 0 0 0 5px rgba(255,255,255,.28),0 5px 12px rgba(0,0,0,.08);position:relative}
+.table{width:100%;border:0;padding:0;font-family:inherit;font-size:inherit}
+.table.green{background:var(--green2)}.table.red{background:var(--red)}.table.amber{background:var(--amber);color:#4b3b10}.table.selected{outline:4px solid #0a6c46;outline-offset:4px}.table.your-table{box-shadow:inset 0 0 0 5px rgba(255,255,255,.3),0 0 0 5px #bfead3,0 6px 16px rgba(11,107,70,.2)}.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#667181;margin:12px 4px}.legend span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}.legend .lg:before{background:var(--green2)}.legend .lr:before{background:var(--red)}.legend .la:before{background:var(--amber)}
+.selected-card{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.badge{display:inline-block;background:#e7f7ee;color:var(--green);padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800}
+.success{background:linear-gradient(135deg,#f4fcf7,#eaf7f0);border:1px solid #d7efe2;border-radius:24px;padding:20px}.check{width:58px;height:58px;background:var(--green2);color:#fff;border-radius:50%;display:grid;place-items:center;font-size:32px;font-weight:900}
+.vendor-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.vendor{padding:12px 8px;border:1px solid var(--line);border-radius:16px;background:#fff;font-size:12px;font-weight:800;cursor:pointer}.vendor.active{border-color:var(--green);background:#f0faf5;color:var(--green)}
+.item{display:grid;grid-template-columns:72px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:18px;padding:10px;margin:10px 0}.cookie{width:72px;height:72px;border-radius:16px;background:radial-gradient(circle at 45% 40%,#6b3d20 0 6px,transparent 7px),radial-gradient(circle at 65% 55%,#6b3d20 0 6px,transparent 7px),#c98a49}.cookie.matcha{background:radial-gradient(circle at 45% 40%,#ece6cc 0 6px,transparent 7px),radial-gradient(circle at 65% 55%,#ece6cc 0 6px,transparent 7px),#7aa454}.cookie.redv{background:radial-gradient(circle at 45% 40%,#f4dec8 0 6px,transparent 7px),radial-gradient(circle at 65% 55%,#f4dec8 0 6px,transparent 7px),#a93238}
+.price{color:var(--green);font-weight:850}.qty{display:flex;gap:8px;align-items:center}.circlebtn{width:34px;height:34px;border-radius:50%;border:0;background:#edf2ef;font-weight:900;cursor:pointer}.circlebtn.plus{background:var(--green);color:#fff}
+.cart{position:sticky;bottom:2px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 22px rgba(0,0,0,.1)}
+.progress{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;margin-top:12px}.step{font-size:11px;color:#8a93a1}.step .sicon{width:34px;height:34px;border-radius:50%;margin:0 auto 6px;display:grid;place-items:center;background:#eef1f3}.step.active{color:var(--green);font-weight:800}.step.active .sicon{background:var(--green);color:#fff}
+.toast{position:absolute;left:50%;bottom:88px;transform:translateX(-50%) translateY(20px);background:#102118;color:#fff;padding:10px 14px;border-radius:14px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:10}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.modal{position:absolute;inset:0;background:rgba(10,20,15,.45);display:none;align-items:flex-end;z-index:20}.modal.show{display:flex}.sheet{background:#fff;width:100%;border-radius:28px 28px 0 0;padding:20px 18px 30px}.sheet h2{margin:0 0 8px}.sheet .btn{margin-top:10px}
+.demo-tag{position:absolute;top:54px;right:20px;background:#fff1d8;color:#7b5000;border:1px solid #f5d49a;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:800;z-index:4}
+.demo-tag{pointer-events:none}
+:focus-visible{outline:3px solid var(--green);outline-offset:3px}
+@media(max-height:760px){.phone{height:96vh}.main{padding-bottom:90px}h1{font-size:30px}}
+@media(max-width:480px){
+  .shell{padding:8px;min-height:100svh}
+  .phone{height:calc(100svh - 16px);width:min(430px,100%)}
+  .item{grid-template-columns:54px minmax(0,1fr) auto;gap:8px}
+  .cookie{width:54px;height:54px}
+  .qty{gap:5px}
+  .selected-card{flex-wrap:wrap}
+  .sheet{max-height:90%;overflow:auto}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="phone">
+    <div class="island"></div><div class="demo-tag">INTERACTIVE DEMO</div>
+    <div class="screen">
+      <div class="status"><span>9:41</span><span>▮▮▮  Wi‑Fi  🔋</span></div>
+      <div class="header"><div class="brand">Seat<span>Spot</span></div><button class="bell" aria-label="Notifications" onclick="showNotifications()">🔔</button></div>
+      <div class="main">
+        <!-- HOME -->
+        <section id="home" class="page active">
+          <h1>Find a seat fast</h1>
+          <div class="sub">Live availability at nearby canteens and food courts</div>
+          <label class="search">⌕ <input id="locationSearch" type="search" placeholder="Search location" aria-label="Search location" autocomplete="off"><span aria-hidden="true" style="margin-left:auto">⌖</span></label>
+          <div class="filters">
+            <button class="chip active" data-filter="Now">◷ Now</button>
+            <button class="chip" data-filter="Quiet">🔇 Quiet</button>
+            <button class="chip" data-filter="Near food">🍴 Near food</button>
+            <button class="chip" data-filter="Near plug">🔌 Near plug</button>
+          </div>
+          <div id="filterSummary" class="small" style="margin:8px 2px 2px">Showing all nearby locations</div>
+          <div id="locations"></div>
+          <div class="section-title">How it works</div>
+          <div class="how">
+            <div><div class="bubble">📍</div><b>1. Check live seats</b><p>See availability nearby</p></div>
+            <div><div class="bubble">▣</div><b>2. Scan table QR</b><p>Claim your table</p></div>
+            <div><div class="bubble">🍪</div><b>3. Order from table</b><p>Pick up when ready</p></div>
+          </div>
+        </section>
+
+        <!-- MAP -->
+        <section id="map" class="page">
+          <h1>Live map</h1>
+          <div class="sub">Real-time seat availability at <b>Chula Cafeteria A</b></div>
+          <div class="card">
+            <div class="occ">
+              <div><strong id="availCount" style="color:var(--green)">8</strong><span class="small">available</span></div>
+              <div><strong id="occCount" style="color:var(--red)">20</strong><span class="small">occupied</span></div>
+              <div><strong id="pctCount">72%</strong><span class="small">full</span></div>
+            </div>
+            <div class="small" style="margin-top:10px">◷ Updated just now</div>
+          </div>
+          <div class="tabs" aria-label="Map zone"><button class="tab" data-zone="A">Zone A</button><button class="tab active" data-zone="B">Zone B</button><button class="tab" data-zone="C">Zone C</button></div>
+          <div class="map">
+            <div class="counter">🍴 FOOD COUNTER</div>
+            <div class="grid" id="tableGrid"></div>
+            <div class="counter" style="margin:15px 0 0">↑ ↑ ↑ &nbsp; ENTRANCE</div>
+          </div>
+          <div class="legend"><span class="lg">Available</span><span class="lr">Occupied</span><span class="la">Being cleared</span></div>
+          <div class="card selected-card">
+            <div>
+              <div style="font-size:18px;font-weight:850">
+                Table <span id="selectedName">B3</span>
+                <span class="badge" id="selectedStatus">Available now</span>
+              </div>
+              <div class="small" id="selectedMeta" style="margin-top:6px">👥 4 seats &nbsp; • &nbsp; Zone B</div>
+            </div>
+            <button class="btn" id="selectedAction" onclick="handleSelectedAction()">Claim table</button>
+          </div>
+          <button class="btn secondary wide" id="scannerButton" onclick="showScanner()">📷 Simulate QR scan</button>
+        </section>
+
+        <!-- CLAIMED -->
+        <section id="claimed" class="page">
+          <h1>Table claimed</h1>
+          <div class="sub">You can now order from your table</div>
+          <div class="success">
+            <div class="row"><div class="check">✓</div><div><div style="font-size:24px;font-weight:850"><span id="claimedTable">Table B3</span> is now yours</div><div class="small" style="margin-top:5px">Your seat is linked to your session.</div></div></div>
+            <div class="row" style="margin-top:16px;flex-wrap:wrap"><span class="badge">Chula Cafeteria A</span><span class="badge" id="claimedZone">Zone B</span><span class="badge">1 person checked in</span></div>
+          </div>
+          <div class="card">
+            <div class="loc-title">Live occupancy <span class="live"><span class="dot"></span>Live</span></div>
+            <div class="occ" style="margin-top:10px">
+              <div><strong id="cAvail" style="color:var(--green)">7</strong><span class="small">available</span></div>
+              <div><strong id="cOcc" style="color:var(--red)">21</strong><span class="small">occupied</span></div>
+              <div><strong id="cPct">74%</strong><span class="small">full</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="small">Scanned QR</div>
+            <div style="font-size:28px;font-weight:900;margin:4px 0">▣ <span id="qrCode">B3</span> ✓</div>
+            <div class="small">Table successfully claimed</div>
+          </div>
+          <button class="btn wide" onclick="go('orders')">🏪 Browse stalls</button>
+          <button class="btn secondary wide" style="margin-top:10px" onclick="leaveTable()">↪ Leave table</button>
+          <div class="section-title">What happens next</div>
+          <div class="how">
+            <div><div class="bubble">🍴</div><b>1. Order food</b><p>Browse stalls</p></div>
+            <div><div class="bubble">🛍️</div><b>2. Pick up</b><p>We’ll notify you</p></div>
+            <div><div class="bubble">🪑</div><b>3. Enjoy</b><p>Dine and relax</p></div>
+          </div>
+        </section>
+
+        <!-- ORDERS -->
+        <section id="orders" class="page">
+          <h1>Order from <span id="orderTableTitle">your table</span></h1>
+          <div class="sub">Chula Cafeteria A</div>
+          <div class="success" style="padding:14px"><b id="orderLinkStatus">Claim a table to link your order</b></div>
+          <div class="vendor-tabs">
+            <button class="vendor active">🍪 Cookie Corner</button>
+            <button class="vendor">🥤 Campus Drinks</button>
+            <button class="vendor">🍔 Quick Bites</button>
+          </div>
+          <div class="section-title" style="margin-top:14px">Cookie Corner</div>
+          <div class="small">Freshly baked cookies, made daily.</div>
+          <div id="menu"></div>
+          <div class="card">
+            <div style="font-weight:850;margin-bottom:8px">Your order status</div>
+            <div class="progress">
+              <div class="step" id="st1"><div class="sicon">✓</div>Ordered</div>
+              <div class="step" id="st2"><div class="sicon">🍪</div>Preparing</div>
+              <div class="step" id="st3"><div class="sicon">🛍️</div>Ready for pickup</div>
+            </div>
+          </div>
+          <div class="cart">
+            <div id="cartSummary"><b><span id="cartCount">0</span> items</b><div class="small">Total <span id="cartTotal">0</span> THB</div></div>
+            <button class="btn" id="cartAction" onclick="reviewOrder()">Review order</button>
+          </div>
+        </section>
+
+        <!-- PROFILE -->
+        <section id="profile" class="page">
+          <h1>Demo profile</h1>
+          <div class="sub">Prototype controls for the showcase.</div>
+          <div class="card"><b>Reset demo</b><p class="small">Returns all tables and orders to the starting state.</p><button class="btn wide" onclick="resetDemo()">Reset prototype</button></div>
+        </section>
+      </div>
+
+      <nav class="nav">
+        <button data-page="home" class="active"><span class="ico">⌂</span>Home</button>
+        <button data-page="map"><span class="ico">🗺️</span>Map</button>
+        <button data-page="orders"><span class="ico">▤</span>Orders</button>
+        <button data-page="profile"><span class="ico">◎</span>Profile</button>
+      </nav>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Table and order actions">
+      <div class="sheet" id="sheetContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const initialTables = {
+  A1:'green',A2:'red',A3:'red',A4:'green',
+  B1:'red',B2:'amber',B3:'green',B4:'red',
+  C1:'green',C2:'red',C3:'red',C4:'green'
+};
+const state = {
+  selected:'B3',
+  zone:'B',
+  claimed:null,
+  tables:{...initialTables},
+  cart:{choc:0,matcha:0,red:0},
+  orderPlaced:false,
+  activeOrder:null,
+  orderStatus:'idle',
+  orderTimers:[],
+  filter:'Now',
+  search:''
+};
+
+const locs = [
+  {
+    name:'Chula Cafeteria A',
+    available:8,
+    pct:72,
+    total:'28 / 100 seats',
+    features:['Near food','Near plug'],
+    note:'Near food stalls • charging points'
+  },
+  {
+    name:'Chula Cafeteria B',
+    available:15,
+    pct:48,
+    total:'52 / 100 seats',
+    features:['Quiet'],
+    note:'Quieter seating area'
+  },
+  {
+    name:'Siam Paragon Food Court',
+    available:3,
+    pct:91,
+    total:'91 / 100 seats',
+    features:['Near food'],
+    note:'Closest to food stalls'
+  }
+];
+
+function renderLocations(filter=state.filter){
+  state.filter=filter;
+  const box=document.getElementById('locations');
+  const summary=document.getElementById('filterSummary');
+
+  let visible = filter==='Now'
+    ? [...locs]
+    : locs.filter(l=>l.features.includes(filter));
+  const query=state.search.trim();
+  if(query) visible=visible.filter(l=>l.name.toLowerCase().includes(query.toLowerCase()));
+
+  // "Now" prioritizes places with more current availability.
+  if(filter==='Now'){
+    visible.sort((a,b)=>b.available-a.available);
+    summary.textContent='Showing nearby locations with live availability';
+  } else {
+    summary.textContent=`${visible.length} location${visible.length===1?'':'s'} matching “${filter}”`;
+  }
+  if(query) summary.textContent=`${visible.length} location${visible.length===1?'':'s'} matching “${query}”${filter==='Now'?'':` • ${filter}`}`;
+
+  if(!visible.length){
+    box.innerHTML=`
+      <div class="card" style="text-align:center;padding:24px">
+        <div style="font-size:28px">🔎</div>
+        <b>No matching locations right now</b>
+        <div class="small" style="margin-top:6px">Try another filter.</div>
+      </div>`;
+    return;
+  }
+
+  box.innerHTML=visible.map((l)=> {
+    const originalIndex=locs.indexOf(l);
+    const featurePills=l.features.map(f=>`<span class="badge" style="margin-right:5px">${f}</span>`).join('');
+    return `
+      <div class="card">
+        <div class="loc-head">
+          <div>
+            <div class="loc-title">${l.name} <span class="live"><span class="dot"></span>Live</span></div>
+            <div class="small" style="margin-top:4px">${l.note}</div>
+          </div>
+          <span>›</span>
+        </div>
+        <div style="margin-top:9px">${featurePills}</div>
+        <div class="metric">
+          <span class="available">${l.available} <small style="font-size:15px">seats available</small></span>
+          <span class="full" style="color:${l.pct>70?'var(--red)':'#4d5a6a'}">${l.pct}% full</span>
+        </div>
+        <div class="bar">
+          <div class="fill" style="width:${l.pct}%;background:${l.pct>70?'var(--red)':'#41c976'}"></div>
+        </div>
+        <div class="row between">
+          <span class="small">👥 ${l.total}</span>
+          <button class="btn" onclick="openLocation(${originalIndex})">View live map ›</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openLocation(i){
+  if(i!==0){ toast('Demo uses Chula Cafeteria A'); }
+  go('map');
+}
+function renderTables(){
+  const grid=document.getElementById('tableGrid');
+  document.querySelectorAll('.tab').forEach(t=>{
+    const active=t.dataset.zone===state.zone;
+    t.classList.toggle('active',active);
+    t.setAttribute('aria-pressed',String(active));
+  });
+  grid.innerHTML=Object.entries(state.tables).filter(([n])=>n.startsWith(state.zone)).map(([n,s])=>{
+    const mine = state.claimed===n ? ' your-table' : '';
+    const status=state.claimed===n?'your table':s==='green'?'available':s==='amber'?'being cleared':'occupied';
+    return `<button class="table ${s} ${state.selected===n?'selected':''}${mine}" aria-label="Table ${n}, ${status}" aria-pressed="${state.selected===n}" onclick="selectTable('${n}')">${n}${state.claimed===n?' ✓':''}</button>`;
+  }).join('');
+}
+
+function selectZone(zone){
+  if(!['A','B','C'].includes(zone)) return;
+  state.zone=zone;
+  if(!state.selected.startsWith(zone)){
+    state.selected=Object.keys(state.tables).find(n=>n.startsWith(zone) && state.tables[n]==='green')
+      || Object.keys(state.tables).find(n=>n.startsWith(zone));
+  }
+  renderTables();
+  updateSelectedCard();
+}
+
+function zoneForTable(n){
+  if(!n) return 'Zone A';
+  if(n.startsWith('A')) return 'Zone A';
+  if(n.startsWith('B')) return 'Zone B';
+  return 'Zone C';
+}
+
+function updateSelectedCard(){
+  const n=state.selected;
+  const status=state.tables[n];
+  const badge=document.getElementById('selectedStatus');
+  const action=document.getElementById('selectedAction');
+  const scanner=document.getElementById('scannerButton');
+  const meta=document.getElementById('selectedMeta');
+
+  document.getElementById('selectedName').textContent=n;
+  meta.innerHTML=`👥 4 seats &nbsp; • &nbsp; ${zoneForTable(n)}`;
+
+  action.disabled=false;
+  action.style.opacity='1';
+  action.style.cursor='pointer';
+  scanner.disabled=false;
+  scanner.style.opacity='1';
+  scanner.style.cursor='pointer';
+
+  // If the user already owns this exact table, make "Leave table" obvious.
+  if(state.claimed===n){
+    badge.textContent='Your table';
+    badge.style.background='#dff5e9';
+    badge.style.color='var(--green)';
+    action.textContent='Leave table';
+    action.className='btn secondary';
+    scanner.textContent='✓ This QR is already checked in';
+    scanner.disabled=true;
+    scanner.style.opacity='.55';
+    scanner.style.cursor='not-allowed';
+    return;
+  }
+
+  // If the user owns another table, never let them claim a second one.
+  if(state.claimed){
+    badge.textContent = status==='green' ? 'Available' : status==='amber' ? 'Being cleared' : 'Occupied';
+    badge.style.background = status==='green' ? '#e7f7ee' : status==='amber' ? '#fff2d8' : '#ffe7e8';
+    badge.style.color = status==='green' ? 'var(--green)' : status==='amber' ? '#8a5b00' : '#b72830';
+    action.textContent=`Leave ${state.claimed} first`;
+    action.className='btn secondary';
+    action.disabled=true;
+    action.style.opacity='.55';
+    action.style.cursor='not-allowed';
+    scanner.textContent=`📷 Leave ${state.claimed} before scanning another table`;
+    scanner.disabled=true;
+    scanner.style.opacity='.55';
+    scanner.style.cursor='not-allowed';
+    return;
+  }
+
+  action.className='btn';
+
+  if(status==='green'){
+    badge.textContent='Available now';
+    badge.style.background='#e7f7ee';
+    badge.style.color='var(--green)';
+    action.textContent='Claim table';
+    scanner.textContent='📷 Simulate QR scan';
+  } else if(status==='amber'){
+    badge.textContent='Being cleared';
+    badge.style.background='#fff2d8';
+    badge.style.color='#8a5b00';
+    action.textContent='Not ready yet';
+    action.disabled=true;
+    action.style.opacity='.55';
+    action.style.cursor='not-allowed';
+    scanner.textContent='📷 QR unavailable while table is being cleared';
+    scanner.disabled=true;
+    scanner.style.opacity='.55';
+    scanner.style.cursor='not-allowed';
+  } else {
+    badge.textContent='Occupied';
+    badge.style.background='#ffe7e8';
+    badge.style.color='#b72830';
+    action.textContent='Already occupied';
+    action.disabled=true;
+    action.style.opacity='.55';
+    action.style.cursor='not-allowed';
+    scanner.textContent='📷 QR unavailable for occupied table';
+    scanner.disabled=true;
+    scanner.style.opacity='.55';
+    scanner.style.cursor='not-allowed';
+  }
+}
+
+function selectTable(n){
+  if(!Object.hasOwn(state.tables,n)) return;
+  state.selected=n;
+  state.zone=n[0];
+  renderTables();
+  updateSelectedCard();
+
+  const status=state.tables[n];
+  if(state.claimed===n) toast(`${n} is your current table`);
+  else if(state.claimed) toast(`You already have ${state.claimed}. Leave it before claiming another table.`);
+  else if(status==='red') toast(`${n} is occupied`);
+  else if(status==='amber') toast(`${n} is being cleared`);
+}
+
+function handleSelectedAction(){
+  if(state.claimed===state.selected){
+    leaveTable();
+    return;
+  }
+  claimSelected();
+}
+function calcCounts(){
+  const values=Object.values(state.tables);
+  const avail=values.filter(x=>x==='green').length;
+  const occ=values.filter(x=>x==='red').length;
+  const pct=Math.round(occ/values.length*100);
+  return {avail,occ,pct};
+}
+function updateOccupancy(){
+  const c=calcCounts();
+  document.getElementById('availCount').textContent=c.avail;
+  document.getElementById('occCount').textContent=c.occ;
+  document.getElementById('pctCount').textContent=c.pct+'%';
+  document.getElementById('cAvail').textContent=c.avail;
+  document.getElementById('cOcc').textContent=c.occ;
+  document.getElementById('cPct').textContent=c.pct+'%';
+  locs[0].available=c.avail*4;
+  locs[0].pct=c.pct;
+  locs[0].total=`${c.occ*4} / ${Object.keys(state.tables).length*4} seats occupied`;
+  renderLocations();
+}
+
+function updateTableSession(){
+  document.getElementById('claimedTable').textContent=state.claimed?'Table '+state.claimed:'No table';
+  document.getElementById('claimedZone').textContent=zoneForTable(state.claimed);
+  document.getElementById('qrCode').textContent=state.claimed || '—';
+  document.getElementById('orderTableTitle').textContent=state.claimed?'Table '+state.claimed:'your table';
+  document.getElementById('orderLinkStatus').textContent=state.claimed
+    ? '✓ Your table is linked — pick up when ready'
+    : 'Claim a table to link your order';
+}
+function claimSelected(){
+  const n=state.selected;
+  const status=state.tables[n];
+
+  // A customer may only hold one table at a time.
+  if(state.claimed){
+    if(state.claimed===n){
+      go('claimed');
+      toast(`${n} is already your table`);
+    } else {
+      toast(`You already have ${state.claimed}. Leave it before claiming ${n}.`);
+      state.selected=state.claimed;
+      renderTables();
+      updateSelectedCard();
+    }
+    return;
+  }
+
+  if(status!=='green'){
+    toast(status==='red'?`${n} is already occupied`:`${n} is still being cleared`);
+    updateSelectedCard();
+    return;
+  }
+
+  // Every newly claimed table starts with a completely fresh order/cart.
+  resetOrderSession();
+
+  state.claimed=n;
+  state.tables[n]='red';
+
+  updateTableSession();
+
+  renderTables();
+  updateOccupancy();
+  updateSelectedCard();
+  go('claimed');
+  toast(`${n} claimed successfully`);
+}
+function showScanner(){
+  if(state.claimed){
+    if(state.claimed===state.selected){
+      toast(`${state.claimed} is already checked in as your table`);
+      return;
+    }
+    toast(`Leave ${state.claimed} before scanning another table`);
+    return;
+  }
+
+  const status=state.tables[state.selected];
+  if(status!=='green'){
+    toast(status==='red'?`${state.selected} is occupied`:`${state.selected} is being cleared`);
+    return;
+  }
+
+  document.getElementById('sheetContent').innerHTML=`
+    <h2>Scan table QR</h2>
+    <p class="small">For the showcase, this simulates scanning the QR code attached to Table ${state.selected}.</p>
+    <div style="font-size:72px;text-align:center;margin:18px">▣</div>
+    <button class="btn wide" onclick="closeModal();claimSelected()">Scan ${state.selected}</button>
+    <button class="btn secondary wide" onclick="closeModal()">Cancel</button>`;
+  openModal();
+}
+let modalTrigger=null;
+function openModal(){
+  modalTrigger=document.activeElement;
+  document.getElementById('modal').classList.add('show');
+  document.querySelector('.screen').inert=true;
+  document.querySelector('#sheetContent button')?.focus();
+}
+function closeModal(){
+  document.getElementById('modal').classList.remove('show');
+  document.querySelector('.screen').inert=false;
+  if(modalTrigger?.isConnected) modalTrigger.focus();
+  modalTrigger=null;
+}
+document.getElementById('modal').addEventListener('click',event=>{
+  if(event.target===event.currentTarget) closeModal();
+});
+document.addEventListener('keydown',event=>{
+  if(!document.getElementById('modal').classList.contains('show')) return;
+  if(event.key==='Escape') closeModal();
+  if(event.key==='Tab'){
+    const buttons=[...document.querySelectorAll('#sheetContent button:not([disabled])')];
+    const first=buttons[0],last=buttons[buttons.length-1];
+    if(event.shiftKey && document.activeElement===first){event.preventDefault();last.focus()}
+    else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first.focus()}
+  }
+});
+function leaveTable(){
+  if(!state.claimed){
+    toast('No table is currently claimed');
+    return;
+  }
+
+  const old=state.claimed;
+  state.tables[old]='green';
+  state.claimed=null;
+  state.selected=old;
+  state.zone=old[0];
+  updateTableSession();
+
+  // A table session ends here: clear any old cart/order so the next table starts fresh.
+  resetOrderSession();
+
+  renderTables();
+  updateOccupancy();
+  updateSelectedCard();
+  go('map');
+  toast(`${old} is available again`);
+}
+
+function go(id){
+  // When returning to the map while checked in, focus on the user's own table.
+  if(id==='map' && state.claimed){
+    state.selected=state.claimed;
+    state.zone=state.claimed[0];
+  }
+
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
+  document.querySelector('.main').scrollTop=0;
+
+  if(id==='map'){
+    renderTables();
+    updateSelectedCard();
+  }
+}
+document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>go(b.dataset.page));
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));
+  c.classList.add('active');
+  const filter=c.dataset.filter || 'Now';
+  renderLocations(filter);
+  toast(filter==='Now' ? 'Showing live availability now' : `Showing: ${filter}`);
+});
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  selectZone(t.dataset.zone);
+});
+document.querySelectorAll('.vendor').forEach(v=>v.onclick=()=>{
+  if(!v.textContent.includes('Cookie')) toast('Only Cookie Corner is enabled in this demo');
+});
+document.getElementById('locationSearch').addEventListener('input',event=>{
+  state.search=event.target.value;
+  renderLocations();
+});
+
+function showNotifications(){
+  toast(state.orderStatus==='ready'?'Ready for pickup! 🍪':state.orderStatus==='preparing'
+    ?'Your cookies are being prepared':state.orderStatus==='ordered'?'Order sent to Cookie Corner':'No new notifications');
+}
+
+const menu = [
+  {id:'choc',name:'Chocolate Chip Cookie',price:45,cls:''},
+  {id:'matcha',name:'Matcha Cookie',price:45,cls:'matcha'},
+  {id:'red',name:'Red Velvet Cookie',price:49,cls:'redv'}
+];
+function renderMenu(){
+  const locked = state.orderPlaced;
+
+  document.getElementById('menu').innerHTML=menu.map(m=>`
+    <div class="item">
+      <div class="cookie ${m.cls}"></div>
+      <div>
+        <b>${m.name}</b>
+        <div class="small">Freshly baked • pickup when ready</div>
+        <div class="price">${m.price} THB</div>
+      </div>
+      <div class="qty">
+        <button class="circlebtn" ${locked?'disabled style="opacity:.4;cursor:not-allowed"':''} onclick="changeQty('${m.id}',-1)">−</button>
+        <b>${state.cart[m.id]}</b>
+        <button class="circlebtn plus" ${locked?'disabled style="opacity:.4;cursor:not-allowed"':''} onclick="changeQty('${m.id}',1)">+</button>
+      </div>
+    </div>`).join('');
+
+  const cartCount=Object.values(state.cart).reduce((a,b)=>a+b,0);
+  const cartTotal=menu.reduce((s,m)=>s+m.price*state.cart[m.id],0);
+  const action=document.getElementById('cartAction');
+  const summary=document.getElementById('cartSummary');
+
+  // After an order is placed, show the placed order instead of leaving "Review order" stuck there.
+  if(state.orderPlaced && state.activeOrder){
+    const {count,total}=state.activeOrder;
+    const statusText =
+      state.orderStatus==='preparing' ? 'Preparing your order…' :
+      state.orderStatus==='ready' ? 'Ready for pickup 🍪' :
+      'Order placed';
+
+    summary.innerHTML=`<b>${count} item${count===1?'':'s'} • ${statusText}</b><div class="small">Order total ${total} THB</div>`;
+    const ready=state.orderStatus==='ready';
+    action.textContent = ready ? 'Confirm pickup' : 'Order placed ✓';
+    action.disabled=!ready;
+    action.style.opacity=ready?'1':'.65';
+    action.style.cursor=ready?'pointer':'not-allowed';
+  } else {
+    summary.innerHTML=`<b><span id="cartCount">${cartCount}</span> items</b><div class="small">Total <span id="cartTotal">${cartTotal}</span> THB</div>`;
+    action.textContent='Review order';
+    action.disabled=false;
+    action.style.opacity='1';
+    action.style.cursor='pointer';
+  }
+}
+
+function changeQty(id,d){
+  if(state.orderPlaced && state.orderStatus!=='ready'){
+    toast('Your current order is already being prepared');
+    return;
+  }
+  if(state.orderPlaced && state.orderStatus==='ready'){
+    toast('Finish this order or leave the table before starting a new one');
+    return;
+  }
+  state.cart[id]=Math.max(0,state.cart[id]+d);
+  renderMenu();
+}
+function reviewOrder(){
+  if(state.orderPlaced){
+    if(state.orderStatus==='ready'){
+      resetOrderSession();
+      toast('Order collected. You can place another order.');
+    }
+    return;
+  }
+  const count=Object.values(state.cart).reduce((a,b)=>a+b,0);
+  if(!state.claimed){toast('Claim a table first');go('map');return}
+  if(!count){toast('Add at least one cookie');return}
+  const total=menu.reduce((s,m)=>s+m.price*state.cart[m.id],0);
+  document.getElementById('sheetContent').innerHTML=`
+    <h2>Review order</h2>
+    <p><b>${count} item${count>1?'s':''}</b> • ${total} THB</p>
+    <p class="small">Pickup at Cookie Corner when notified.</p>
+    <button class="btn wide" onclick="placeOrder()">Place demo order</button>
+    <button class="btn secondary wide" onclick="closeModal()">Keep editing</button>`;
+  openModal();
+}
+function placeOrder(){
+  if(state.orderPlaced) return;
+  if(!state.claimed){closeModal();toast('Claim a table first');go('map');return}
+  const count=Object.values(state.cart).reduce((a,b)=>a+b,0);
+  if(!count){closeModal();toast('Add at least one cookie');return}
+  const total=menu.reduce((s,m)=>s+m.price*state.cart[m.id],0);
+
+  closeModal();
+
+  // Snapshot the order, then clear the editable cart so it cannot carry to another table.
+  state.activeOrder={count,total,items:{...state.cart}};
+  state.cart={choc:0,matcha:0,red:0};
+  state.orderPlaced=true;
+  state.orderStatus='ordered';
+
+  clearOrderTimers();
+  setStep(1);
+  renderMenu();
+  toast('Order sent to Cookie Corner');
+
+  state.orderTimers.push(setTimeout(()=>{
+    state.orderStatus='preparing';
+    setStep(2);
+    renderMenu();
+    toast('Your cookies are being prepared');
+  },2200));
+
+  state.orderTimers.push(setTimeout(()=>{
+    state.orderStatus='ready';
+    setStep(3);
+    renderMenu();
+    toast('Ready for pickup! 🍪');
+  },5000));
+}
+function clearOrderTimers(){
+  (state.orderTimers || []).forEach(t=>clearTimeout(t));
+  state.orderTimers=[];
+}
+
+function resetOrderSession(){
+  clearOrderTimers();
+  state.cart={choc:0,matcha:0,red:0};
+  state.activeOrder=null;
+  state.orderPlaced=false;
+  state.orderStatus='idle';
+  setStep(0);
+  renderMenu();
+}
+
+function setStep(n){
+  ['st1','st2','st3'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i<n));
+}
+let toastTimer;
+function toast(msg){
+  clearTimeout(toastTimer);
+  const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');
+  toastTimer=setTimeout(()=>el.classList.remove('show'),1800);
+}
+function resetDemo(){
+  closeModal();
+  state.selected='B3';state.zone='B';state.claimed=null;
+  state.tables={...initialTables};
+  state.filter='Now';
+  state.search='';
+  document.getElementById('locationSearch').value='';
+  updateTableSession();
+  resetOrderSession();
+
+  document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('active',x.dataset.filter==='Now'));
+  renderLocations('Now');
+  renderTables();
+  renderMenu();
+  updateOccupancy();
+  updateSelectedCard();
+  go('home');
+  toast('Prototype reset');
+}
+function recognizeTableLink(){
+  const params=new URLSearchParams(window.location.search);
+  if(!params.has('table')) return;
+  const table=params.get('table').trim().toUpperCase();
+  if(!Object.hasOwn(state.tables,table)){
+    go('map');
+    toast('Unknown table QR. Choose a table on the map.');
+    return;
+  }
+  state.selected=table;
+  state.zone=table[0];
+  go('map');
+  toast(`QR recognized: Table ${table}`);
+}
+renderLocations('Now');renderTables();renderMenu();updateOccupancy();updateSelectedCard();updateTableSession();
+recognizeTableLink();
+</script>
+</body>
+</html>
