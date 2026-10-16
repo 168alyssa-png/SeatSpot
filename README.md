@@ -1,6 +1,6 @@
 # SeatSpot
 
-The existing SeatSpot interactive prototype, preserved as a self-contained static website. Its green-and-white interface, phone frame, sample locations, table map, simulated QR scanner, and Cookie Corner ordering flow remain in `index.html`. There is no build step, production dependency, API, or secret to configure.
+The existing SeatSpot interactive prototype, preserved as a self-contained static website. Its green-and-white interface, sample locations, table map, simulated QR scanner, and Cookie Corner ordering flow remain in `index.html`. The responsive layout uses a normal website header, natural page scrolling, and wider desktop content, with bottom navigation on small screens. There is no simulated phone frame or status bar. The app needs no production dependency, API, or secret; Vercel's deployment command only copies the HTML into its public output directory.
 
 ## Run locally
 

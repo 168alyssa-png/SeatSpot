@@ -103,6 +103,21 @@ class PrototypeTests(unittest.TestCase):
         self.page.get_by_role("button", name="Place demo order", exact=True).click()
         expect(self.page.locator("#cartSummary")).to_contain_text("Order placed")
 
+    def click_modal_backdrop(self):
+        modal = self.page.locator("#modal")
+        bounds = modal.bounding_box()
+        sheet = modal.locator(".sheet").bounding_box()
+        candidates = ((4, 4), (bounds["width"] - 4, 4),
+                      (4, bounds["height"] - 4))
+        for x, y in candidates:
+            page_x, page_y = bounds["x"] + x, bounds["y"] + y
+            inside_sheet = (sheet["x"] <= page_x <= sheet["x"] + sheet["width"]
+                            and sheet["y"] <= page_y <= sheet["y"] + sheet["height"])
+            if not inside_sheet:
+                modal.click(position={"x": x, "y": y})
+                return
+        self.fail("The dialog must leave a clickable backdrop outside its sheet")
+
     def test_home_search_filters_navigation_and_demo_stalls(self):
         self.open()
         self.active("home")
@@ -229,7 +244,7 @@ class PrototypeTests(unittest.TestCase):
                 if dismiss == "Escape":
                     self.page.keyboard.press("Escape")
                 elif dismiss == "backdrop":
-                    modal.click(position={"x": modal.bounding_box()["width"] / 2, "y": 60})
+                    self.click_modal_backdrop()
                 else:
                     self.page.get_by_role("button", name=dismiss, exact=True).click()
                 expect(modal).to_be_hidden()
@@ -345,8 +360,7 @@ class PrototypeTests(unittest.TestCase):
         trigger.click()
         self.page.locator("#sheetContent h2").click()
         expect(modal).to_be_visible()
-        # Avoid the phone's clipped, rounded corners when clicking the backdrop.
-        modal.click(position={"x": modal.bounding_box()["width"] / 2, "y": 60})
+        self.click_modal_backdrop()
         expect(modal).to_be_hidden()
         expect(trigger).to_be_focused()
         trigger.click()
@@ -417,9 +431,11 @@ class PrototypeTests(unittest.TestCase):
                 expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
 
     def test_mobile_and_desktop_controls_fit_without_horizontal_overflow(self):
-        for width in (320, 375, 390, 430, 1280):
-            with self.subTest(width=width):
-                self.page.set_viewport_size({"width": width, "height": 852})
+        viewports = ((320, 640), (375, 852), (390, 852), (430, 852),
+                     (1280, 640), (844, 390))
+        for width, height in viewports:
+            with self.subTest(width=width, height=height):
+                self.page.set_viewport_size({"width": width, "height": height})
                 self.open("/?table=B12")
                 self.assert_main_fits()
                 expect(self.page.locator("#tableGrid button:visible")).to_have_count(12)
@@ -439,19 +455,101 @@ class PrototypeTests(unittest.TestCase):
                 self.nav("home")
                 self.assert_main_fits()
 
+    def test_website_uses_available_width_and_document_scrolling(self):
+        for width, height in ((320, 640), (1280, 640), (844, 390)):
+            with self.subTest(width=width, height=height):
+                self.page.set_viewport_size({"width": width, "height": height})
+                self.claim("B12")
+                expect(self.page.locator(".phone, .shell, .status, .island")).to_have_count(0)
+                if width <= 430:
+                    app = self.page.locator(".app").bounding_box()
+                    self.assertAlmostEqual(app["x"], 0, delta=1)
+                    self.assertAlmostEqual(app["width"], width, delta=1)
+                if width == 1280:
+                    self.assertGreater(self.page.locator(".main").bounding_box()["width"], 900)
+                self.assert_document_scrolling()
+                for page_id in ("map", "orders", "profile", "home"):
+                    self.nav(page_id)
+                    self.assert_main_fits()
+                    self.assert_document_scrolling()
+                    self.assert_controls_fit(".nav button", within_main=False)
+
+    def test_claim_scan_and_order_dialogs_fit_small_and_desktop_viewports(self):
+        for width, height in ((320, 640), (1280, 640), (844, 390)):
+            with self.subTest(width=width, height=height):
+                self.page.set_viewport_size({"width": width, "height": height})
+                self.open("/?table=B12", keep_prompt=True)
+                self.assert_dialog_fits()
+                self.click_modal_backdrop()
+                expect(self.page.locator("#modal")).to_be_hidden()
+                self.page.locator("#scannerButton").click()
+                self.assert_dialog_fits()
+                self.page.get_by_role("button", name="Scan B12", exact=True).click()
+                self.active("claimed")
+                self.nav("orders")
+                self.item("Chocolate Chip Cookie").locator(".plus").click()
+                self.page.locator("#cartAction").click()
+                self.assert_dialog_fits()
+                self.page.get_by_role("button", name="Place demo order", exact=True).click()
+                expect(self.page.locator("#modal")).to_be_hidden()
+                expect(self.page.locator("#cartSummary")).to_contain_text("Order placed")
+                self.nav("map")
+                self.page.locator("#selectedAction").click()
+                expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
+
     def assert_main_fits(self):
         dimensions = self.page.locator(".main").evaluate(
             "el => ({content: el.scrollWidth, viewport: el.clientWidth})"
         )
         self.assertLessEqual(dimensions["content"], dimensions["viewport"] + 1,
                              f"Horizontal overflow: {dimensions}")
+        document = self.page.evaluate(
+            "() => ({content: document.documentElement.scrollWidth, viewport: innerWidth})"
+        )
+        self.assertLessEqual(document["content"], document["viewport"] + 1,
+                             f"Document horizontal overflow: {document}")
 
-    def assert_controls_fit(self, selector):
-        phone = self.page.locator(".phone").bounding_box()
+    def assert_controls_fit(self, selector, within_main=True):
+        viewport_width = self.page.viewport_size["width"]
+        bounds = (self.page.locator(".main").bounding_box() if within_main
+                  else {"x": 0, "width": viewport_width})
         for control in self.page.locator(selector).all():
             box = control.bounding_box()
-            self.assertGreaterEqual(box["x"], phone["x"])
-            self.assertLessEqual(box["x"] + box["width"], phone["x"] + phone["width"])
+            self.assertGreaterEqual(box["x"], max(0, bounds["x"]) - 1)
+            self.assertLessEqual(box["x"] + box["width"],
+                                 min(viewport_width, bounds["x"] + bounds["width"]) + 1)
+
+    def assert_document_scrolling(self):
+        metrics = self.page.locator(".main").evaluate(
+            "el => ({overflow: getComputedStyle(el).overflowY, top: el.scrollTop, "
+            "height: document.documentElement.scrollHeight, viewport: innerHeight})"
+        )
+        self.assertNotIn(metrics["overflow"], ("auto", "scroll", "hidden"),
+                         "Page content should use normal document scrolling")
+        self.assertEqual(metrics["top"], 0)
+        self.page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        if metrics["height"] > metrics["viewport"] + 1:
+            self.assertGreater(self.page.evaluate("window.scrollY"), 0)
+        self.assertEqual(self.page.locator(".main").evaluate("el => el.scrollTop"), 0)
+
+    def assert_dialog_fits(self):
+        modal = self.page.locator("#modal")
+        expect(modal).to_be_visible()
+        viewport = self.page.viewport_size
+        for element in (modal, modal.locator(".sheet")):
+            bounds = element.bounding_box()
+            self.assertGreaterEqual(bounds["x"], -1)
+            self.assertGreaterEqual(bounds["y"], -1)
+            self.assertLessEqual(bounds["x"] + bounds["width"], viewport["width"] + 1)
+            self.assertLessEqual(bounds["y"] + bounds["height"], viewport["height"] + 1)
+        for button in modal.locator("button").all():
+            button.scroll_into_view_if_needed()
+            expect(button).to_be_visible()
+            bounds = button.bounding_box()
+            self.assertGreaterEqual(bounds["x"], -1)
+            self.assertGreaterEqual(bounds["y"], -1)
+            self.assertLessEqual(bounds["x"] + bounds["width"], viewport["width"] + 1)
+            self.assertLessEqual(bounds["y"] + bounds["height"], viewport["height"] + 1)
 
 
 if __name__ == "__main__":
