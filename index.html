@@ -44,6 +44,11 @@ h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
 .search input::placeholder{color:var(--muted)}
 .search:focus-within{outline:2px solid var(--green);outline-offset:2px}
 .search{max-width:640px}
+.home-actions{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 20px}
+.scanner-preview{margin:16px 0;background:#102118;border-radius:18px;overflow:hidden}
+.scanner-preview video{display:block;width:100%;max-height:320px;max-height:min(42dvh,320px);aspect-ratio:4/3;object-fit:contain}
+.scanner-status{line-height:1.5;min-height:40px}
+.scanner-detected{color:var(--green);font-weight:800}
 .filters{display:flex;gap:8px;overflow:auto;padding:12px 0 4px}.chip{white-space:nowrap;border:0;border-radius:999px;padding:10px 14px;background:#f2f4f5;color:#5c6677;font-weight:700;cursor:pointer}.chip.active{background:#daf4e6;color:#164c35}
 .card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px;margin:12px 0;box-shadow:0 4px 16px rgba(20,60,45,.04)}
 #locations{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px;margin:16px 0}
@@ -138,6 +143,10 @@ h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
         <section id="home" class="page active">
           <h1>Find a seat fast</h1>
           <div class="sub">Live availability at nearby canteens and food courts</div>
+          <div class="home-actions">
+            <button class="btn" onclick="go('map')">View live map</button>
+            <button class="btn secondary" id="cameraScannerButton" onclick="startCameraScanner()">📷 Scan table QR</button>
+          </div>
           <label class="search">⌕ <input id="locationSearch" type="search" placeholder="Search location" aria-label="Search location" autocomplete="off"><span aria-hidden="true" style="margin-left:auto">⌖</span></label>
           <div class="filters">
             <button class="chip active" data-filter="Now">◷ Now</button>
@@ -266,6 +275,7 @@ h1{font-size:35px;line-height:1.02;margin:12px 0 6px;letter-spacing:-1.2px}
     </div>
 </div>
 
+<script src="./assets/jsqr-1.4.0.js"></script>
 <script>
 const initialTables = {
   A1:'green',A2:'red',A3:'red',A4:'green',
@@ -586,6 +596,178 @@ function claimSelected(){
   go('claimed');
   toast(`${n} claimed successfully`);
 }
+const cameraScan={active:false,run:0,stream:null,video:null,timer:null};
+
+function stopCameraScanner(){
+  cameraScan.active=false;
+  cameraScan.run++;
+  clearTimeout(cameraScan.timer);
+  cameraScan.timer=null;
+  const stream=cameraScan.stream;
+  cameraScan.stream=null;
+  if(stream) stream.getTracks().forEach(track=>{track.onended=null;track.stop()});
+  if(cameraScan.video){
+    cameraScan.video.pause();
+    cameraScan.video.srcObject=null;
+    cameraScan.video=null;
+  }
+}
+
+function tableFromQrCode(text){
+  if(typeof text!=='string') return null;
+  const value=text.trim();
+  if(!/^(https?:\/\/|\?|\/)/i.test(value)) return null;
+  try{
+    const url=new URL(value,window.location.href);
+    const origins=new Set([window.location.origin,'https://seatspot-zi36.vercel.app']);
+    if(!['http:','https:'].includes(url.protocol) || !origins.has(url.origin) || url.username || url.password) return null;
+    const tables=url.searchParams.getAll('table');
+    if(tables.length!==1) return null;
+    const table=tables[0].trim().toUpperCase();
+    return Object.hasOwn(state.tables,table)?table:null;
+  } catch{return null}
+}
+
+function scannerMessage(message){
+  const status=document.getElementById('scannerStatus');
+  if(status && status.textContent!==message) status.textContent=message;
+}
+
+function cameraErrorMessage(error,preview=false){
+  if(preview) return 'The camera preview could not start. Try camera again or choose a table manually.';
+  if(['NotAllowedError','PermissionDeniedError','SecurityError'].includes(error.name)){
+    return 'Camera permission was denied. Allow camera access in your browser’s site settings, then try again, or choose a table manually.';
+  }
+  if(['NotFoundError','DevicesNotFoundError'].includes(error.name)) return 'No camera was found. You can choose a table manually.';
+  if(['NotReadableError','TrackStartError','AbortError'].includes(error.name)) return 'The camera is busy or could not open. Close other apps using it, then try again, or choose a table manually.';
+  return 'Camera scanning is unavailable in this browser. Try Safari or Chrome, or choose a table manually.';
+}
+
+function showCameraError(message){
+  stopCameraScanner();
+  scannerMessage(message);
+  const preview=document.querySelector('.scanner-preview');
+  if(preview) preview.hidden=true;
+  const retry=document.getElementById('retryCamera');
+  if(retry) retry.hidden=false;
+}
+
+function chooseTableManually(){
+  closeModal();
+  go('map');
+  toast('Choose an available table on the map');
+}
+
+function finishCameraScan(table){
+  closeModal();
+  state.selected=table;
+  state.zone=table[0];
+  const url=new URL(window.location.href);
+  url.searchParams.set('table',table);
+  window.history.replaceState(null,'',url);
+  go('map');
+  showTableClaimPrompt(table,true);
+}
+
+async function startCameraScanner(){
+  // A second tap must not open a second stream or permission request.
+  if(cameraScan.active) return;
+  if(state.claimed){
+    go('map');
+    toast(`Leave ${state.claimed} before scanning another table`);
+    return;
+  }
+  stopCameraScanner();
+  const run=cameraScan.run;
+  cameraScan.active=true;
+  document.getElementById('sheetContent').innerHTML=`
+    <h2>Scan your table QR</h2>
+    <p class="small">Point your camera at the QR code on the table.</p>
+    <div class="scanner-preview"><video id="scannerVideo" autoplay muted playsinline aria-label="Live camera preview"></video></div>
+    <p class="small scanner-status" id="scannerStatus" role="status" aria-live="polite">Requesting camera permission…</p>
+    <button class="btn wide" id="retryCamera" hidden onclick="startCameraScanner()">Try camera again</button>
+    <button class="btn secondary wide" onclick="chooseTableManually()">Choose table manually</button>
+    <button class="btn secondary wide" onclick="closeModal()">Cancel scanner</button>`;
+  // Keep the original page control as the focus-return target when retrying.
+  if(!document.getElementById('modal').classList.contains('show')) openModal();
+  else document.querySelector('#sheetContent button:not([hidden])')?.focus();
+
+  if(!window.isSecureContext){
+    showCameraError('Camera access needs HTTPS. Open the secure SeatSpot website, or choose a table manually.');
+    return;
+  }
+  if(!navigator.mediaDevices?.getUserMedia){
+    showCameraError('Camera scanning is unavailable in this browser. Try Safari or Chrome, or choose a table manually.');
+    return;
+  }
+  if(typeof window.jsQR!=='function'){
+    showCameraError('The QR scanner could not load. Refresh the page and try again, or choose a table manually.');
+    return;
+  }
+
+  const video=document.getElementById('scannerVideo');
+  let preview=false;
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
+    });
+    // Permission may resolve after Cancel, tab suspension, or a newer session.
+    if(!cameraScan.active || run!==cameraScan.run){
+      stream.getTracks().forEach(track=>track.stop());
+      return;
+    }
+    cameraScan.stream=stream;
+    cameraScan.video=video;
+    stream.getVideoTracks().forEach(track=>track.onended=()=>{
+      if(cameraScan.active && run===cameraScan.run) showCameraError('The camera stopped. Try camera again or choose a table manually.');
+    });
+    video.muted=true;
+    video.playsInline=true;
+    video.srcObject=stream;
+    preview=true;
+    await video.play();
+    if(!cameraScan.active || run!==cameraScan.run) return;
+    scannerMessage('Point your camera at a SeatSpot table QR code.');
+    const canvas=document.createElement('canvas');
+    const context=canvas.getContext('2d',{willReadFrequently:true});
+    if(!context) throw new Error('Camera preview unavailable');
+    const scanFrame=()=>{
+      if(!cameraScan.active || run!==cameraScan.run) return;
+      if(video.readyState>=2 && video.videoWidth && video.videoHeight){
+        const scale=Math.min(1,720/Math.max(video.videoWidth,video.videoHeight));
+        canvas.width=Math.round(video.videoWidth*scale);
+        canvas.height=Math.round(video.videoHeight*scale);
+        try{
+          context.drawImage(video,0,0,canvas.width,canvas.height);
+          const frame=context.getImageData(0,0,canvas.width,canvas.height);
+          const result=window.jsQR(frame.data,frame.width,frame.height,{inversionAttempts:'attemptBoth'});
+          if(result){
+            const table=tableFromQrCode(result.data);
+            if(table){finishCameraScan(table);return}
+            scannerMessage('Not a valid SeatSpot table QR. Try another code, or choose a table manually.');
+          }
+        } catch{
+          showCameraError('The camera image could not be read. Try camera again or choose a table manually.');
+          return;
+        }
+      }
+      // Decode a bounded frame a few times per second to limit mobile CPU use.
+      cameraScan.timer=setTimeout(scanFrame,150);
+    };
+    scanFrame();
+  } catch(error){
+    if(cameraScan.active && run===cameraScan.run) showCameraError(cameraErrorMessage(error,preview));
+  }
+}
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden && cameraScan.active) closeModal();
+});
+window.addEventListener('pagehide',()=>{
+  if(cameraScan.active) closeModal();
+});
+
 function showScanner(){
   if(state.claimed){
     if(state.claimed===state.selected){
@@ -616,9 +798,10 @@ function openModal(){
   document.getElementById('modal').classList.add('show');
   document.querySelector('.screen').inert=true;
   document.body.classList.add('modal-open');
-  document.querySelector('#sheetContent button:not([disabled])')?.focus();
+  document.querySelector('#sheetContent button:not([disabled]):not([hidden])')?.focus();
 }
 function closeModal(){
+  stopCameraScanner();
   document.getElementById('modal').classList.remove('show');
   document.querySelector('.screen').inert=false;
   document.body.classList.remove('modal-open');
@@ -632,7 +815,7 @@ document.addEventListener('keydown',event=>{
   if(!document.getElementById('modal').classList.contains('show')) return;
   if(event.key==='Escape') closeModal();
   if(event.key==='Tab'){
-    const buttons=[...document.querySelectorAll('#sheetContent button:not([disabled])')];
+    const buttons=[...document.querySelectorAll('#sheetContent button:not([disabled]):not([hidden])')];
     const first=buttons[0],last=buttons[buttons.length-1];
     if(event.shiftKey && document.activeElement===first){event.preventDefault();last.focus()}
     else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first.focus()}
@@ -662,6 +845,7 @@ function leaveTable(){
 }
 
 function go(id){
+  if(cameraScan.active) closeModal();
   // When returning to the map while checked in, focus on the user's own table.
   if(id==='map' && state.claimed){
     state.selected=state.claimed;
@@ -862,11 +1046,12 @@ function resetDemo(){
   go('home');
   toast('Prototype reset');
 }
-function showTableClaimPrompt(table){
+function showTableClaimPrompt(table,detected=false){
   if(!Object.hasOwn(state.tables,table)) return;
   const available=state.tables[table]==='green';
   const status=state.tables[table]==='red'?'occupied':'being cleared';
   document.getElementById('sheetContent').innerHTML=`
+    ${detected?`<p class="scanner-detected" role="status">✓ Table ${table} detected</p>`:''}
     <h2>${available?`Claim Table ${table}?`:`Table ${table} is ${status}`}</h2>
     <span class="badge">${zoneForTable(table)} • 4 seats</span>
     <p class="small">Your table QR code points to Table ${table} at Chula Cafeteria A.</p>

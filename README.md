@@ -1,6 +1,8 @@
 # SeatSpot
 
-The existing SeatSpot interactive prototype, preserved as a self-contained static website. Its green-and-white interface, sample locations, table map, simulated QR scanner, and Cookie Corner ordering flow remain in `index.html`. The responsive layout uses a normal website header, natural page scrolling, and wider desktop content, with bottom navigation on small screens. There is no simulated phone frame or status bar. The app needs no production dependency, API, or secret; Vercel's deployment command only copies the HTML into its public output directory.
+The existing SeatSpot interactive prototype, preserved as a static website. Its green-and-white interface, sample locations, table map, and Cookie Corner ordering flow remain in `index.html`. A bundled QR decoder in `assets/` powers the real camera scanner. The responsive layout uses a normal website header, natural page scrolling, and wider desktop content, with bottom navigation on small screens. There is no simulated phone frame or status bar. The app needs no package installation, backend, API key, or secret; Vercel's deployment command copies the HTML and its bundled assets into the public output directory.
+
+Production address: [seatspot-zi36.vercel.app](https://seatspot-zi36.vercel.app/).
 
 ## Run locally
 
@@ -10,24 +12,34 @@ From this repository:
 python3 -m http.server 4173 --bind 127.0.0.1
 ```
 
-Open `http://127.0.0.1:4173/` in a browser. Stop the server with Ctrl+C. In a cloud workspace, bind to `0.0.0.0` if its development tools require it. You can also open `index.html` directly.
+Open `http://127.0.0.1:4173/` in a browser. Stop the server with Ctrl+C. In a cloud workspace, bind to `0.0.0.0` if its development tools require it. Camera access requires the public HTTPS site or a localhost development server; plain HTTP over a local network is insufficient.
 
 ## Table-specific QR links
 
 A table's QR code should contain the final public HTTPS URL and its table ID, for example:
 
 ```text
-https://YOUR-SITE.example/?table=B3
-https://168alyssa-png.github.io/SeatSpot/?table=B3
+https://seatspot-zi36.vercel.app/?table=B3
+https://seatspot-zi36.vercel.app/?table=B12
 ```
 
-The GitHub Pages address above is the expected address after deployment; it is not a published deployment yet. Opening a table link selects that table, switches to the correct zone, opens its map, and shows a claim prompt. For an available table, press **Claim Table B3** (or the matching table ID) to check in, or **Not now** to keep browsing without claiming it. Occupied and clearing tables show their status with claiming disabled and a **View map** button. The live map has 36 tables, with 12 in each zone: A1–A12, B1–B12, and C1–C12. All IDs support table links (for example, `?table=B12`); lower-case IDs are accepted, and unknown IDs show a message without claiming anything. The same links work under a hosting subdirectory and after a refresh.
+Opening a table link selects that table, switches to the correct zone, opens its map, and shows a claim prompt. For an available table, press **Claim Table B3** (or the matching table ID) to check in, or **Not now** to keep browsing without claiming it. Occupied and clearing tables show their status with claiming disabled and a **View map** button. The live map has 36 tables, with 12 in each zone: A1–A12, B1–B12, and C1–C12. All IDs support table links (for example, `?table=B12`); lower-case IDs are accepted, and unknown IDs show a message without claiming anything. The same links work under a hosting subdirectory and after a refresh.
 
-Once the public hostname is settled, generate a separate QR image for each URL. A QR printed for B3 should encode the complete `?table=B3` URL, not the bare table name. Use the phone camera or another QR reader to open it; the in-app **Simulate QR scan** button remains a demonstration and does not access the camera.
+Generate a separate QR image for each full table URL. A QR printed for B3 should encode the complete URL above, not the bare table name. Visitors can scan it inside SeatSpot or use their phone's camera to open the table link directly. The live map's existing **Simulate QR scan** remains available for demonstrations without a camera.
+
+## In-page camera scanner
+
+1. On Home, tap **Scan table QR** and allow the browser to use the camera. SeatSpot requests the rear camera without microphone access and displays the live video inside its existing dialog.
+2. Point the camera at a table QR. A known ID on the current site's origin or the production origin above is accepted; relative links such as `?table=B12` also work. Unrelated sites, missing or duplicate table parameters, and unknown IDs are rejected while scanning continues.
+3. On detection, the camera stops, the correct zone and table are selected, and **Table B3 detected** appears with the normal claim prompt. Confirm the claim to continue ordering. Unavailable tables retain their existing restrictions, and a visitor must leave their current table before scanning another.
+
+**Cancel scanner**, Escape, clicking the dialog backdrop, or choosing **Choose table manually** releases the camera. It also stops when the page is hidden or left. A late camera-permission response after cancellation is released immediately. Permission denial, a missing/busy camera, unsupported browsers, and insecure HTTP show an explanatory message with retry and manual-selection options. If permission was previously denied, enable camera access for SeatSpot in the browser's site settings before retrying.
+
+The local jsQR 1.4.0 library decodes frames entirely in the browser; there is no camera upload, CDN dependency, or reliance on `BarcodeDetector`. Video uses muted inline playback for iPhone Safari and Android Chrome. Keep `assets/` alongside `index.html` on any host; see `assets/README.md` for the decoder's provenance and license.
 
 ## Deploy with Vercel (recommended)
 
-Use Vercel's free **Hobby** plan for this demo. The checked-in `vercel.json` configures a static deployment: no framework or dependency installation, and a command that copies `index.html` into the generated `public/` directory. Only that directory is published. It requires no environment variables, backend, or custom routing rules.
+Use Vercel's free **Hobby** plan for this demo. The checked-in `vercel.json` configures a static deployment: no framework or dependency installation, and a command that copies `index.html` and `assets/` into the generated `public/` directory. Only that directory is published. The camera Permissions-Policy permits the site's own camera access and disables microphone access. It requires no environment variables, backend, or custom routing rules.
 
 1. Open [Vercel New Project](https://vercel.com/new) and sign in with GitHub. Choose the Hobby plan if asked.
 2. Find `168alyssa-png/SeatSpot` under **Import Git Repository** and click **Import**. If it is missing, use **Adjust GitHub App Permissions** (or **Install**) to grant Vercel access to this repository.
@@ -39,14 +51,14 @@ Once the GitHub repository is connected, later pushes to `main` trigger new prod
 
 ## Deploy with GitHub Pages (alternative)
 
-The included `.github/workflows/pages.yml` publishes only `index.html` and `.nojekyll`. It runs on pushes to `main` or manually from GitHub Actions.
+The included `.github/workflows/pages.yml` publishes `index.html`, `assets/`, and `.nojekyll`. It runs on pushes to `main` or manually from GitHub Actions.
 
 1. Commit these files and push them to the repository's `main` branch. The repository had no commits when this prototype was imported.
 2. In the repository's **Settings → Pages**, set the source to **GitHub Actions**.
 3. Run **Deploy SeatSpot to GitHub Pages** from the **Actions** tab if the initial push happened before Pages was enabled.
 4. Use the deployment URL reported by GitHub. Test the home page and `?table=B3` on that public URL before generating printed QR codes.
 
-For GitHub Pages, no build command, environment variable, backend, or custom routing rule is required. If using another static host, upload `index.html` as the site's root document; keep the query string in table links. Do not upload the `.git` directory.
+For GitHub Pages, no build command, environment variable, backend, or custom routing rule is required. If using another static host, upload `index.html` as the site's root document with its `assets/` directory; keep the query string in table links. Do not upload the `.git` directory.
 
 ## Browser checks
 
@@ -63,7 +75,9 @@ The tests use `CHROMIUM_EXECUTABLE`, a system `chromium`/`google-chrome`, or a P
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-The suite starts and stops its own local server. It checks navigation, filters and search, zones, table claims and release, order totals and timed progress, pickup, modal controls, reset, table links, and narrow-screen layouts. No running development server is needed for tests.
+The suite starts and stops its own local server. It checks navigation, filters and search, zones, table claims and release, order totals and timed progress, pickup, modal controls, reset, table links, and narrow-screen layouts. Scanner tests feed actual QR frames through Chromium's native camera/video pipeline and the bundled decoder; error and cancellation tests control media-device responses. The committed PNG fixtures are converted to camera video in a temporary directory with the Python standard library, with no extra test dependencies. No running development server is needed for tests.
+
+After deployment, check physical iPhone Safari and Android Chrome: first-use Allow, rear-camera preview and QR detection, Deny and retry via site settings, Cancel/manual selection, and switching away from the page. Automated tests cannot certify phone hardware or operating-system permission dialogs.
 
 ## Prototype behavior
 
