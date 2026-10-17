@@ -1,8 +1,6 @@
-name: Deploy SeatSpot to GitHub Pages
+name: Manual static preview (ordering requires Vercel API)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -2,8 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "",
-  "buildCommand": "mkdir -p public && cp index.html public/index.html && cp -R assets public/",
+  "buildCommand": "node scripts/build.mjs",
   "outputDirectory": "public",
+  "rewrites": [{"source": "/admin", "destination": "/admin/index.html"}],
+  "functions": {"api/seatspot.js": {"maxDuration": 30}},
   "headers": [
     {
       "source": "/(.*)",

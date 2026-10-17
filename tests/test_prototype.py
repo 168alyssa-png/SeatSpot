@@ -10,6 +10,7 @@ import shutil
 import unittest
 
 from playwright.sync_api import expect, sync_playwright
+from backend_fixture import install_ordering_fixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +66,7 @@ class PrototypeTests(unittest.TestCase):
 
     def setUp(self):
         self.context = self.browser.new_context(viewport={"width": 430, "height": 932})
+        self.backend = install_ordering_fixture(self.context)
         self.page = self.context.new_page()
         self.page.set_default_timeout(4000)
         self.errors = []
@@ -75,6 +77,7 @@ class PrototypeTests(unittest.TestCase):
         self.assertEqual(self.errors, [], "Browser JavaScript errors")
 
     def open(self, path="/", keep_prompt=False):
+        self.backend["order"] = None  # independent map viewport/scenario fixture
         response = self.page.goto(self.base_url + path)
         self.assertEqual(response.status, 200)
         if not keep_prompt and self.page.locator("#modal").is_visible():
@@ -99,10 +102,9 @@ class PrototypeTests(unittest.TestCase):
 
     def place_one_order(self):
         self.nav("orders")
-        self.item("Chocolate Chip Cookie").locator(".plus").click()
+        self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
         self.page.locator("#cartAction").click()
-        self.page.get_by_role("button", name="Place demo order", exact=True).click()
-        expect(self.page.locator("#cartSummary")).to_contain_text("Order placed")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
 
     def click_modal_backdrop(self):
         modal = self.page.locator("#modal")
@@ -145,16 +147,15 @@ class PrototypeTests(unittest.TestCase):
         self.active("map")
         self.nav("orders")
         expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
-        expect(self.page.locator("#orderLinkStatus")).to_contain_text("Claim a table")
+        expect(self.page.locator("#orderLinkStatus")).to_contain_text("Checking into a table is optional")
         expect(self.page.locator(".progress .active")).to_have_count(0)
         self.page.get_by_role("button", name="Campus Drinks").click()
         expect(self.page.locator(".vendor.active")).to_contain_text("Cookie Corner")
         expect(self.page.locator("#toast")).to_contain_text("Only Cookie Corner")
         self.page.get_by_role("button", name="Quick Bites").click()
         expect(self.page.locator(".vendor.active")).to_contain_text("Cookie Corner")
-        self.page.locator("#cartAction").click()
-        self.active("map")
-        expect(self.page.locator("#toast")).to_have_text("Claim a table first")
+        expect(self.page.locator("#cartAction")).to_be_disabled()
+        self.active("orders")
         self.nav("profile")
         self.nav("home")
 
@@ -391,67 +392,38 @@ class PrototypeTests(unittest.TestCase):
         self.active("claimed")
         expect(self.page.locator("#claimedTable")).to_have_text("Table B3")
 
-    def test_order_total_review_progress_and_pickup(self):
+    def test_single_cookie_order_progress_and_pickup(self):
         self.claim()
         self.nav("orders")
-        self.page.locator("#cartAction").click()
-        expect(self.page.locator("#toast")).to_have_text("Add at least one cookie")
-        chocolate = self.item("Chocolate Chip Cookie")
-        chocolate.locator(".circlebtn:not(.plus)").click()
-        expect(self.page.locator("#cartCount")).to_have_text("0")
-        chocolate.locator(".plus").click(click_count=2, delay=30)
-        self.item("Red Velvet Cookie").locator(".plus").click()
-        expect(self.page.locator("#cartCount")).to_have_text("3")
-        expect(self.page.locator("#cartTotal")).to_have_text("139")
-        self.page.locator("#cartAction").click()
-        expect(self.page.locator("#sheetContent")).to_contain_text("139 THB")
-        self.page.get_by_role("button", name="Keep editing", exact=True).click()
-        expect(self.page.locator("#cartCount")).to_have_text("3")
-        self.page.locator("#cartAction").click()
-        self.page.get_by_role("button", name="Place demo order", exact=True).click()
-        expect(self.page.locator(".progress .active")).to_have_count(1)
         expect(self.page.locator("#cartAction")).to_be_disabled()
-        expect(self.page.locator("#menu button:disabled")).to_have_count(6)
-        expect(self.page.locator("#cartSummary")).to_contain_text("139 THB")
-        expect(self.page.locator("#cartSummary")).to_contain_text("Preparing", timeout=4000)
-        expect(self.page.locator(".progress .active")).to_have_count(2)
-        expect(self.page.locator("#cartAction")).to_have_text("Confirm pickup", timeout=4000)
-        expect(self.page.locator(".progress .active")).to_have_count(3)
-        expect(self.page.locator("#menu button:disabled")).to_have_count(6)
-        self.page.get_by_role("button", name="Notifications").click()
-        expect(self.page.locator("#toast")).to_contain_text("Ready for pickup")
+        expect(self.page.locator(".plus,.circlebtn")).to_have_count(0)
+        self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
         self.page.locator("#cartAction").click()
-        expect(self.page.locator("#cartCount")).to_have_text("0")
-        expect(self.page.locator(".progress .active")).to_have_count(0)
-        expect(self.page.locator("#menu button:disabled")).to_have_count(0)
-        self.item("Matcha Cookie").locator(".plus").click()
-        expect(self.page.locator("#cartTotal")).to_have_text("45")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
+        for status, steps in (("Preparing", 2), ("Ready", 3)):
+            self.backend['order']['status'] = status
+            self.page.evaluate("refreshCustomerOrders()")
+            expect(self.page.locator(".progress .active")).to_have_count(steps)
+        self.page.locator("#cartAction").click()
+        expect(self.page.locator("#cartAction")).to_have_text("Collected ✓")
+        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
         expect(self.page.locator("#orderTableTitle")).to_have_text("Table B3")
 
-    def test_leave_and_reset_cancel_pending_order_timers(self):
-        for action in ("leave", "reset"):
-            with self.subTest(action=action):
-                self.claim()
-                self.page.clock.install()
-                self.place_one_order()
-                if action == "leave":
-                    self.nav("map")
-                    self.page.locator("#selectedAction").click()
-                    self.active("map")
-                else:
-                    self.nav("profile")
-                    self.page.get_by_role("button", name="Reset prototype", exact=True).click()
-                    self.active("home")
-                self.page.clock.fast_forward(6000)
-                self.nav("orders")
-                expect(self.page.locator("#cartCount")).to_have_text("0")
-                expect(self.page.locator("#cartTotal")).to_have_text("0")
-                expect(self.page.locator("#cartAction")).to_have_text("Review order")
-                expect(self.page.locator(".progress .active")).to_have_count(0)
-                expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
-                self.nav("map")
-                expect(self.page.locator("#availCount")).to_have_text("17")
-                expect(self.page.locator("#selectedStatus")).to_have_text("Available now")
+    def test_leave_and_reset_preserve_cookie_session_limit(self):
+        self.claim()
+        self.place_one_order()
+        self.nav("map")
+        self.page.locator("#selectedAction").click()
+        self.nav("orders")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
+        self.nav("profile")
+        self.page.get_by_role("button", name="Reset prototype", exact=True).click()
+        self.nav("orders")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
+        expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
 
     def test_mobile_and_desktop_controls_fit_without_horizontal_overflow(self):
         viewports = ((320, 640), (375, 852), (390, 852), (430, 852),
@@ -473,8 +445,8 @@ class PrototypeTests(unittest.TestCase):
                 self.nav("orders")
                 self.assert_main_fits()
                 self.assert_controls_fit("#menu button")
-                self.item("Chocolate Chip Cookie").locator(".plus").click()
-                expect(self.page.locator("#cartCount")).to_have_text("1")
+                self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
                 self.nav("home")
                 self.assert_main_fits()
 
@@ -520,12 +492,10 @@ class PrototypeTests(unittest.TestCase):
                 self.page.locator("#selectedAction").click()
                 self.active("claimed")
                 self.nav("orders")
-                self.item("Chocolate Chip Cookie").locator(".plus").click()
+                self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
                 self.page.locator("#cartAction").click()
-                self.assert_dialog_fits()
-                self.page.get_by_role("button", name="Place demo order", exact=True).click()
                 expect(self.page.locator("#modal")).to_be_hidden()
-                expect(self.page.locator("#cartSummary")).to_contain_text("Order placed")
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
                 self.nav("map")
                 self.page.locator("#selectedAction").click()
                 expect(self.page.locator("#selectedStatus")).to_have_text("Available now")

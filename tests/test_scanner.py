@@ -20,6 +20,7 @@ import zlib
 from playwright.sync_api import expect, sync_playwright
 
 from test_prototype import ROOT, StaticHandler
+from backend_fixture import install_ordering_fixture
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -122,6 +123,7 @@ class ScannerTests(unittest.TestCase):
             options["executable_path"] = self.executable
         self.browser = self.playwright.chromium.launch(**options)
         self.context = self.browser.new_context(viewport=viewport or {"width": 390, "height": 844})
+        install_ordering_fixture(self.context)
         self.context.add_init_script(f"({RECORD_CAMERA})();\n{init_script or ''}")
         self.page = self.context.new_page()
         self.page.set_default_timeout(6000)
@@ -198,10 +200,9 @@ class ScannerTests(unittest.TestCase):
                 expect(self.page.locator("#claimedTable")).to_have_text(f"Table {table}")
                 self.page.locator('.nav [data-page="orders"]').click()
                 cookie = self.page.locator("#menu .item").filter(has_text="Chocolate Chip Cookie")
-                cookie.locator(".plus").click()
+                cookie.locator(".cookie-select").click()
                 self.page.locator("#cartAction").click()
-                self.page.get_by_role("button", name="Place demo order", exact=True).click()
-                expect(self.page.locator("#cartSummary")).to_contain_text("Order placed")
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
                 self.page.locator('.nav [data-page="map"]').click()
                 self.page.locator("#selectedAction").click()
                 expect(self.page.locator("#claimedTable")).to_have_text("No table")
@@ -360,10 +361,9 @@ class ScannerTests(unittest.TestCase):
                 self.page.locator('.nav [data-page="orders"]').click()
                 expect(self.page.locator("#orderTableTitle")).to_have_text(f"Table {table}")
                 cookie = self.page.locator("#menu .item").filter(has_text="Chocolate Chip Cookie")
-                cookie.locator(".plus").click()
+                cookie.locator(".cookie-select").click()
                 self.page.locator("#cartAction").click()
-                self.page.get_by_role("button", name="Place demo order", exact=True).click()
-                expect(self.page.locator("#cartSummary")).to_contain_text("Order placed")
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
 
     def test_real_camera_rejects_invalid_qr_codes_and_keeps_scanning(self):
         for fixture in ("wrong-origin", "unknown-table", "plain-text", "malformed"):
