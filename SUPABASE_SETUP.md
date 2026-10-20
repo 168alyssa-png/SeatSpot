@@ -63,9 +63,9 @@ After the SQL, staff allowlist, and Production environment variables are configu
 
 ## 5. Check the connected app before the exhibition
 
-1. In `/admin`, set Chocolate Chip stock to 1 and give the other two flavors their actual quantities. Verify active flags are enabled for flavors being offered.
+1. In `/admin`, set Chocolate stock to 1 and give the other two flavors their actual quantities. Verify active flags are enabled for flavors being offered.
 2. Open the customer site in two separate browser profiles or devices. Both should display the same counts, updated automatically every three seconds while visible.
-3. Claim B3 through `?table=B3` or the real QR flow. Select Chocolate Chip and press **Place order**. Confirm flavor and Table B3 appear; staff should see one New order. The other customer should see 0 remaining / Sold out and a disabled Chocolate Chip button.
+3. Claim B3 through `?table=B3` or the real QR flow. Select Chocolate and press **Place order**. Confirm flavor and Table B3 appear; staff should see one New order. The other customer should see 0 remaining / Sold out and a disabled Chocolate button.
 4. Have the second customer order another flavor without claiming a table. Staff should see **No table**. The app allows ordering without table check-in.
 5. Move an order through **Preparing** and **Ready** in `/admin`. The customer progress display should follow the actual staff status. **Confirm pickup** acknowledges collection locally; it does not restore the one-cookie allowance or remove the order.
 6. Refresh, leave the table, or use Reset prototype. The original order and ordering lock should remain for that session. Test Home scanning, map QR verification/mismatch, filters, and leaving tables as usual.
@@ -89,3 +89,9 @@ python3 -m unittest discover -s tests -v
 ```
 
 The database/API tests and backend browser tests require Docker with `postgres:17-alpine` and `postgrest/postgrest:v13.0.7`; Python tests also require Playwright and Chromium. Tests launch isolated disposable local databases and do not touch your Supabase project or use `.env.local` credentials. Local Supabase Auth is a test fixture; the production Auth connection must be checked after you finish setup. Camera tests exercise the actual video/canvas/jsQR decoder in Chromium using QR video fixtures. Physical iPhone Safari and Android Chrome testing is still recommended for camera permission behavior.
+
+## Flavor names and existing installations
+
+Stable database IDs are unchanged: `matcha` displays **Original**, `choc` displays **Chocolate**, and `red` displays **Red Velvet**. The API uses these names for inventory, order confirmations, and the staff dashboard, including records created before the rename. No migration is needed for the website to display the new names.
+
+To synchronize the stored inventory and order flavor text too, run the complete contents of [`supabase/rename-cookie-flavors.sql`](supabase/rename-cookie-flavors.sql) once in Supabase SQL Editor. It changes names only; stock, IDs, quantities, statuses, sessions, and the one-cookie rule are preserved. No SQL function or environment-variable changes are needed. New setups seed the new names automatically; rerunning `setup.sql` also updates inventory names while preserving quantities.

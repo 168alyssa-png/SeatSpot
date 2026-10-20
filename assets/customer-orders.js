@@ -1,6 +1,6 @@
 const menu = [
-  {id:'choc',name:'Chocolate Chip Cookie',price:45,cls:''},
-  {id:'matcha',name:'Matcha Cookie',price:45,cls:'matcha'},
+  {id:'choc',name:'Chocolate Cookie',price:45,cls:''},
+  {id:'matcha',name:'Original Cookie',price:45,cls:'original'},
   {id:'red',name:'Red Velvet Cookie',price:49,cls:'redv'}
 ];
 const cookieState = {inventory:[],selected:null,loading:true,error:null,pending:false,refreshing:false,version:0,timer:null,collected:null};

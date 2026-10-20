@@ -37,10 +37,10 @@ create table if not exists public.staff_members (
 );
 
 insert into public.cookie_inventory (id, flavor, quantity_remaining, active) values
-  ('choc', 'Chocolate Chip', 0, true),
-  ('matcha', 'Matcha', 0, true),
+  ('choc', 'Chocolate', 0, true),
+  ('matcha', 'Original', 0, true),
   ('red', 'Red Velvet', 0, true)
-on conflict (id) do nothing;
+on conflict (id) do update set flavor = excluded.flavor;
 
 -- No public/client policies: all access goes through the same-origin server API.
 alter table public.cookie_inventory enable row level security;

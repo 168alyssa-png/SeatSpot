@@ -1,5 +1,6 @@
 import { randomBytes, createHash } from 'node:crypto';
 
+const COOKIE_FLAVORS = Object.freeze({choc:'Chocolate',matcha:'Original',red:'Red Velvet'});
 const COOKIE_IDS = new Set(['choc', 'matcha', 'red']);
 const STATUSES = new Set(['New', 'Preparing', 'Ready']);
 const ORDER_FIELDS = 'id,cookie_id,cookie_flavor,quantity,table_id,created_at,updated_at,status';
@@ -13,7 +14,9 @@ class ApiError extends Error {
 }
 const fail = (status, code, message) => { throw new ApiError(status, code, message); };
 const digest = token => createHash('sha256').update(token).digest('hex');
-const publicOrder = order => order ? Object.fromEntries(ORDER_FIELDS.split(',').map(key => [key, order[key]])) : null;
+// Display names follow stable IDs, including rows created before a flavor rename.
+const publicInventory = item => ({...item,flavor:COOKIE_FLAVORS[item.id] ?? item.flavor});
+const publicOrder = order => order ? {...Object.fromEntries(ORDER_FIELDS.split(',').map(key => [key, order[key]])),cookie_flavor:COOKIE_FLAVORS[order.cookie_id] ?? order.cookie_flavor} : null;
 
 function cookies(req) {
   const result = {};
@@ -112,7 +115,7 @@ export function createHandler({ env = process.env, fetchImpl = fetch } = {}) {
       };
       const rest = (resource, options) => request(`/rest/v1/${resource}`, options);
       const rpc = (name, body) => rest(`rpc/${name}`, { method: 'POST', body });
-      const inventory = () => rest(`cookie_inventory?select=${INVENTORY_FIELDS}&order=id.asc`);
+      const inventory = async () => (await rest(`cookie_inventory?select=${INVENTORY_FIELDS}&order=id.asc`)).map(publicInventory);
       const cookieValues = cookies(req);
       async function session(create = false) {
         const token = cookieValues[SESSION_COOKIE];
@@ -198,7 +201,7 @@ export function createHandler({ env = process.env, fetchImpl = fetch } = {}) {
             (active !== null && typeof active !== 'boolean') || (quantity !== null && adjustment !== null) ||
             (quantity === null && adjustment === null && active === null)) fail(400, 'INVALID_STOCK_CHANGE', 'Enter a valid stock quantity or adjustment.');
         const stock = await rpc('set_cookie_inventory', { p_staff_id: staff.id, p_cookie_id: body.cookie_id, p_quantity: quantity, p_adjustment: adjustment, p_active: active });
-        return send(200, { inventory: stock });
+        return send(200, { inventory: publicInventory(stock) });
       }
       if (action === 'order-status') {
         if (!UUID.test(body.order_id || '') || !STATUSES.has(body.status)) fail(400, 'INVALID_STATUS', 'Choose an order and New, Preparing, or Ready.');

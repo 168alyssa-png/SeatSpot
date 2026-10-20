@@ -102,9 +102,9 @@ class PrototypeTests(unittest.TestCase):
 
     def place_one_order(self):
         self.nav("orders")
-        self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
+        self.item("Chocolate Cookie").locator(".cookie-select").click()
         self.page.locator("#cartAction").click()
-        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
 
     def click_modal_backdrop(self):
         modal = self.page.locator("#modal")
@@ -397,9 +397,9 @@ class PrototypeTests(unittest.TestCase):
         self.nav("orders")
         expect(self.page.locator("#cartAction")).to_be_disabled()
         expect(self.page.locator(".plus,.circlebtn")).to_have_count(0)
-        self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
+        self.item("Chocolate Cookie").locator(".cookie-select").click()
         self.page.locator("#cartAction").click()
-        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
         expect(self.page.locator("#menu button:disabled")).to_have_count(3)
         for status, steps in (("Preparing", 2), ("Ready", 3)):
             self.backend['order']['status'] = status
@@ -416,12 +416,12 @@ class PrototypeTests(unittest.TestCase):
         self.nav("map")
         self.page.locator("#selectedAction").click()
         self.nav("orders")
-        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
         expect(self.page.locator("#menu button:disabled")).to_have_count(3)
         self.nav("profile")
         self.page.get_by_role("button", name="Reset prototype", exact=True).click()
         self.nav("orders")
-        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+        expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
         expect(self.page.locator("#menu button:disabled")).to_have_count(3)
         expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
 
@@ -445,8 +445,8 @@ class PrototypeTests(unittest.TestCase):
                 self.nav("orders")
                 self.assert_main_fits()
                 self.assert_controls_fit("#menu button")
-                self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
-                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+                self.item("Chocolate Cookie").locator(".cookie-select").click()
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
                 self.nav("home")
                 self.assert_main_fits()
 
@@ -492,10 +492,10 @@ class PrototypeTests(unittest.TestCase):
                 self.page.locator("#selectedAction").click()
                 self.active("claimed")
                 self.nav("orders")
-                self.item("Chocolate Chip Cookie").locator(".cookie-select").click()
+                self.item("Chocolate Cookie").locator(".cookie-select").click()
                 self.page.locator("#cartAction").click()
                 expect(self.page.locator("#modal")).to_be_hidden()
-                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
                 self.nav("map")
                 self.page.locator("#selectedAction").click()
                 expect(self.page.locator("#selectedStatus")).to_have_text("Available now")

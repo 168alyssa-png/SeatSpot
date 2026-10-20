@@ -57,7 +57,7 @@ test('stock is read-only and a customer gets an opaque HttpOnly session',async()
 
 test('an order has one flavor, quantity 1, optional table, timestamp, and New status',async()=>{
   const c=await customer();const result=await c.request('order',{cookie_id:'choc',quantity:1,table_id:'B3'});
-  assert.equal(result.status,200);assert.equal(result.data.order.cookie_flavor,'Chocolate Chip');
+  assert.equal(result.status,200);assert.equal(result.data.order.cookie_flavor,'Chocolate');
   assert.equal(result.data.order.quantity,1);assert.equal(result.data.order.table_id,'B3');
   assert.equal(result.data.order.status,'New');assert(!Number.isNaN(Date.parse(result.data.order.created_at)));
   assert.equal(await stock('choc'),4);assert.equal(Number(await stack.sql('select count(*) from public.cookie_orders')),1);
@@ -170,7 +170,7 @@ test('staff can move orders between all three statuses; customer sees actual sta
     assert.equal((await c.request()).data.order.status,status);
   }
   const list=(await admin.request('staff-state')).data.orders;
-  assert.equal(list[0].table_id,'C11');assert.equal(list[0].cookie_flavor,'Matcha');assert(!('session_hash' in list[0]));
+  assert.equal(list[0].table_id,'C11');assert.equal(list[0].cookie_flavor,'Original');assert(!('session_hash' in list[0]));
   assert.equal((await admin.request('order-status',{order_id:placed.data.order.id,status:'Deleted'})).status,400);
 });
 
@@ -200,7 +200,7 @@ test('expired or absent sessions cannot order until inventory establishes a vali
 
 test('a failed order insert rolls back the stock decrement',async()=>{
   const c=await customer();
-  await stack.sql("alter table public.cookie_orders add constraint test_reject_insert check (cookie_flavor <> 'Chocolate Chip') not valid");
+  await stack.sql("alter table public.cookie_orders add constraint test_reject_insert check (cookie_flavor <> 'Chocolate') not valid");
   try{assert.equal((await c.request('order',{cookie_id:'choc'})).status,409);assert.equal(await stock('choc'),5)}
   finally{await stack.sql('alter table public.cookie_orders drop constraint test_reject_insert')}
   assert.equal(Number(await stack.sql('select count(*) from public.cookie_orders')),0);
@@ -214,4 +214,42 @@ test('rerunning setup preserves stock, orders, and staff; static output excludes
   for(const name of ['/','/admin','/assets/customer-orders.js','/assets/admin.js']){
     const response=await fetch(stack.base+name);assert.equal(response.status,200);assert(!(await response.text()).includes(stack.serviceToken));
   }
+});
+
+test('existing inventory and orders display renamed flavors before a database migration',async()=>{
+  // Deliberate legacy fixtures: deployed databases may still store the old names.
+  const names={choc:'Chocolate',matcha:'Original',red:'Red Velvet'};
+  await stack.sql("update public.cookie_inventory set flavor=case id when 'choc' then 'Chocolate Chip' when 'matcha' then 'Matcha' else 'Red Velvet' end");
+  try{
+    const admin=await staff();
+    for(const [id,name] of Object.entries(names)){
+      const c=await customer();
+      const placed=await c.request('order',{cookie_id:id,table_id:'B3'});
+      assert.equal(placed.data.order.cookie_flavor,name);
+      assert.equal((await c.request()).data.order.cookie_flavor,name);
+      assert.equal(placed.data.inventory.find(item=>item.id===id).flavor,name);
+    }
+    const snapshot=(await admin.request('staff-state')).data;
+    for(const item of snapshot.inventory)assert.equal(item.flavor,names[item.id]);
+    for(const order of snapshot.orders)assert.equal(order.cookie_flavor,names[order.cookie_id]);
+    const adjusted=await admin.request('inventory',{cookie_id:'matcha',adjustment:1});
+    assert.equal(adjusted.data.inventory.flavor,'Original');
+  }finally{
+    await stack.sql(await readFile(new URL('../supabase/rename-cookie-flavors.sql',import.meta.url),'utf8'));
+  }
+});
+
+test('name migration is repeatable and preserves stock, order data, and session allowance',async()=>{
+  const c=await customer();const placed=(await c.request('order',{cookie_id:'matcha',table_id:'B3'})).data.order;
+  await stack.sql("update public.cookie_inventory set flavor='Legacy inventory' where id='matcha'; update public.cookie_orders set cookie_flavor='Legacy order',status='Preparing'");
+  const snapshot=async()=>JSON.parse(await stack.sql("select json_build_object('inventory',(select json_agg(to_jsonb(i)-'flavor'-'updated_at' order by id) from public.cookie_inventory i),'orders',(select json_agg(to_jsonb(o)-'cookie_flavor'-'updated_at' order by id) from public.cookie_orders o),'sessions',(select json_agg(s order by session_hash) from public.cookie_sessions s))"));
+  const before=await snapshot();
+  const migration=await readFile(new URL('../supabase/rename-cookie-flavors.sql',import.meta.url),'utf8');
+  await stack.sql(migration);await stack.sql(migration);
+  assert.deepEqual(await snapshot(),before);
+  assert.equal(await stack.sql("select flavor from public.cookie_inventory where id='matcha'"),'Original');
+  assert.equal(await stack.sql('select cookie_flavor from public.cookie_orders'),'Original');
+  const retry=(await c.request('order',{cookie_id:'choc'})).data;
+  assert.equal(retry.order.id,placed.id);assert.equal(retry.order.status,'Preparing');assert.equal(retry.already_ordered,true);
+  assert.equal(await stock('matcha'),4);assert.equal(await stock('choc'),5);
 });

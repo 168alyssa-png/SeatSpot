@@ -199,10 +199,10 @@ class ScannerTests(unittest.TestCase):
                 self.page.get_by_role("button", name=f"Claim Table {table}", exact=True).click()
                 expect(self.page.locator("#claimedTable")).to_have_text(f"Table {table}")
                 self.page.locator('.nav [data-page="orders"]').click()
-                cookie = self.page.locator("#menu .item").filter(has_text="Chocolate Chip Cookie")
+                cookie = self.page.locator("#menu .item").filter(has_text="Chocolate Cookie")
                 cookie.locator(".cookie-select").click()
                 self.page.locator("#cartAction").click()
-                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
                 self.page.locator('.nav [data-page="map"]').click()
                 self.page.locator("#selectedAction").click()
                 expect(self.page.locator("#claimedTable")).to_have_text("No table")
@@ -360,10 +360,10 @@ class ScannerTests(unittest.TestCase):
                 expect(self.page.locator("#claimedTable")).to_have_text(f"Table {table}")
                 self.page.locator('.nav [data-page="orders"]').click()
                 expect(self.page.locator("#orderTableTitle")).to_have_text(f"Table {table}")
-                cookie = self.page.locator("#menu .item").filter(has_text="Chocolate Chip Cookie")
+                cookie = self.page.locator("#menu .item").filter(has_text="Chocolate Cookie")
                 cookie.locator(".cookie-select").click()
                 self.page.locator("#cartAction").click()
-                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate Chip")
+                expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
 
     def test_real_camera_rejects_invalid_qr_codes_and_keeps_scanning(self):
         for fixture in ("wrong-origin", "unknown-table", "plain-text", "malformed"):

@@ -41,7 +41,7 @@ The local jsQR 1.4.0 library decodes frames entirely in the browser; there is no
 
 ## Shared inventory and staff dashboard
 
-Cookie inventory and orders now use Supabase through a server-side API. Customers select one cookie flavor, see shared remaining stock, and place one order per 24-hour SeatSpot session. Stock decrements and order creation happen in one database transaction. Staff sign in at `/admin` to set or adjust inventory and change orders between New, Preparing, and Ready. Updates reach visible customer and staff pages automatically every three seconds.
+Cookie inventory and orders now use Supabase through a server-side API. Flavors are Original (`matcha`), Chocolate (`choc`), and Red Velvet (`red`); these internal IDs stay unchanged. Customers select one cookie flavor, see shared remaining stock, and place one order per 24-hour SeatSpot session. Stock decrements and order creation happen in one database transaction. Staff sign in at `/admin` to set or adjust inventory and change orders between New, Preparing, and Ready. Updates reach visible customer and staff pages automatically every three seconds.
 
 Follow [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for the exact SQL, staff account/allowlist, environment variables, security details, and exhibition checks. Start with [supabase/setup.sql](supabase/setup.sql). Configure Supabase and Vercel Production environment variables before the first backend release. After setup, an authorized push to the connected GitHub branch triggers the Vercel deployment. Local `.env.local` configuration is optional and is not required on your Mac for Vercel to work.
 
