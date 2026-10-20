@@ -3,7 +3,7 @@ import { randomBytes, createHash } from 'node:crypto';
 const COOKIE_FLAVORS = Object.freeze({choc:'Chocolate',matcha:'Original',red:'Red Velvet'});
 const COOKIE_IDS = new Set(['choc', 'matcha', 'red']);
 const STATUSES = new Set(['New', 'Preparing', 'Ready']);
-const ORDER_FIELDS = 'id,cookie_id,cookie_flavor,quantity,table_id,created_at,updated_at,status';
+const ORDER_FIELDS = 'id,customer_name,cookie_id,cookie_flavor,quantity,table_id,created_at,updated_at,status';
 const INVENTORY_FIELDS = 'id,flavor,quantity_remaining,active,sold_out,updated_at';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SESSION_COOKIE = 'seatspot_session';
@@ -60,6 +60,8 @@ async function readBody(req) {
 }
 function upstreamError(data) {
   const messages = {
+    NAME_REQUIRED: [409, 'Enter your name before placing an order.'],
+    INVALID_NAME: [400, 'Enter a name between 1 and 30 characters, without control characters.'],
     SOLD_OUT: [409, 'That cookie has just sold out. Choose another flavor.'],
     SESSION_EXPIRED: [409, 'Your session expired. Refresh the inventory and try again.'],
     INVALID_TABLE: [400, 'Choose a valid SeatSpot table.'],
@@ -121,12 +123,12 @@ export function createHandler({ env = process.env, fetchImpl = fetch } = {}) {
         const token = cookieValues[SESSION_COOKIE];
         if (token && /^[A-Za-z0-9_-]{43}$/.test(token)) {
           const hash = digest(token);
-          const rows = await rest(`cookie_sessions?session_hash=eq.${hash}&select=session_hash,expires_at&limit=1`);
+          const rows = await rest(`cookie_sessions?session_hash=eq.${hash}&select=session_hash,expires_at,customer_name&limit=1`);
           if (rows[0] && new Date(rows[0].expires_at).getTime() > Date.now()) return rows[0];
         }
         if (!create) fail(409, 'SESSION_REQUIRED', 'Refresh the inventory before placing your order.');
         const tokenNew = randomBytes(32).toString('base64url');
-        const rows = await rest('cookie_sessions?select=session_hash,expires_at', {
+        const rows = await rest('cookie_sessions?select=session_hash,expires_at,customer_name', {
           method: 'POST', body: { session_hash: digest(tokenNew) }, extraHeaders: { Prefer: 'return=representation' }
         });
         if (!rows[0]?.expires_at) fail(503, 'SERVICE_UNAVAILABLE', 'The ordering service is unavailable. Please try again.');
@@ -150,7 +152,7 @@ export function createHandler({ env = process.env, fetchImpl = fetch } = {}) {
             inventory(),
             rest(`cookie_orders?session_hash=eq.${current.session_hash}&select=${ORDER_FIELDS}&limit=1`)
           ]);
-          return send(200, { inventory: stock, order: publicOrder(orders[0]), session_expires_at: current.expires_at });
+          return send(200, { inventory: stock, order: publicOrder(orders[0]), customer_name: current.customer_name, session_expires_at: current.expires_at });
         }
         if (action === 'staff-state') {
           const staff = await requireStaff();
@@ -169,14 +171,21 @@ export function createHandler({ env = process.env, fetchImpl = fetch } = {}) {
       }
       const body = await readBody(req);
       if (!body || Array.isArray(body) || typeof body !== 'object') fail(400, 'INVALID_BODY', 'Send a JSON object.');
+      if (action === 'welcome') {
+        const name = typeof body.customer_name === 'string' ? body.customer_name.trim() : '';
+        if (!name || name.length > 30 || /[\u0000-\u001f\u007f]/u.test(name)) fail(400, 'INVALID_NAME', 'Enter a name between 1 and 30 characters, without control characters.');
+        const current = await session();
+        const saved = await rpc('set_customer_name', {p_session_hash:current.session_hash,p_customer_name:name});
+        return send(200, {customer_name:saved,session_expires_at:current.expires_at});
+      }
       if (action === 'order') {
         if (!COOKIE_IDS.has(body.cookie_id)) fail(400, 'INVALID_COOKIE', 'Choose a valid cookie flavor.');
         if (body.quantity !== undefined && body.quantity !== 1) fail(400, 'ONE_COOKIE_ONLY', 'You may order one cookie per session.');
         const table = body.table_id ?? null;
         if (table !== null && (typeof table !== 'string' || !/^[ABC]([1-9]|1[0-2])$/.test(table))) fail(400, 'INVALID_TABLE', 'Choose a valid SeatSpot table.');
         const current = await session();
-        const result = await rpc('place_cookie_order', { p_session_hash: current.session_hash, p_cookie_id: body.cookie_id, p_table_id: table });
-        return send(200, { inventory: await inventory(), order: publicOrder(result.order), already_ordered: result.already_ordered, session_expires_at: current.expires_at });
+        const result = await rpc('place_named_cookie_order', { p_session_hash: current.session_hash, p_cookie_id: body.cookie_id, p_table_id: table });
+        return send(200, { inventory: await inventory(), order: publicOrder(result.order), already_ordered: result.already_ordered, customer_name: current.customer_name, session_expires_at: current.expires_at });
       }
       if (action === 'staff-login') {
         if (typeof body.email !== 'string' || typeof body.password !== 'string' || body.email.length > 320 || body.password.length > 1000 || !body.email || !body.password) fail(400, 'CREDENTIALS_REQUIRED', 'Enter your staff email and password.');

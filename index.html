@@ -10,7 +10,21 @@
 <link rel="stylesheet" href="./assets/seatspot.css">
 </head>
 <body>
-<div class="app">
+<section id="welcomeScreen" class="welcome-screen" aria-labelledby="welcomeTitle">
+  <div class="card welcome-card">
+    <div class="brand">Seat<span>Spot</span></div>
+    <h1 id="welcomeTitle">Welcome to SeatSpot</h1>
+    <form id="welcomeForm">
+      <label for="customerName">What should we call you?</label>
+      <input id="customerName" name="customer_name" type="text" autocomplete="given-name" maxlength="30" required aria-describedby="welcomeMessage" placeholder="Your name">
+      <p id="welcomeMessage" class="small" role="status" aria-live="polite">Checking your session…</p>
+      <button id="welcomeContinue" class="btn wide" type="submit" disabled>Continue</button>
+      <button id="welcomeRetry" class="btn secondary wide" type="button" hidden onclick="refreshCustomerOrders()">Retry connection</button>
+    </form>
+  </div>
+</section>
+<noscript>SeatSpot needs JavaScript to save your name and open the app.</noscript>
+<div class="app" id="seatspotApp" hidden inert>
     <div class="screen">
       <header class="header">
         <div class="brand">Seat<span>Spot</span></div>
@@ -846,7 +860,7 @@ function recognizeTableLink(){
   showTableClaimPrompt(table);
 }
 renderLocations('Now');renderTables();renderMenu();updateOccupancy();updateSelectedCard();updateTableSession();
-recognizeTableLink();
+// Table URL prompts open after the welcome screen has accepted the session name.
 </script>
 </body>
 </html>

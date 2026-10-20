@@ -80,6 +80,7 @@ class PrototypeTests(unittest.TestCase):
         self.backend["order"] = None  # independent map viewport/scenario fixture
         response = self.page.goto(self.base_url + path)
         self.assertEqual(response.status, 200)
+        expect(self.page.locator("#welcomeScreen")).to_be_hidden()
         if not keep_prompt and self.page.locator("#modal").is_visible():
             self.page.locator("#sheetContent .secondary").click()
 

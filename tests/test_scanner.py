@@ -130,6 +130,7 @@ class ScannerTests(unittest.TestCase):
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
         response = self.page.goto(self.base_url)
         self.assertEqual(response.status, 200)
+        expect(self.page.locator("#welcomeScreen")).to_be_hidden()
 
     def start_scanner(self):
         self.page.get_by_role("button", name=re.compile("Scan table QR")).click()

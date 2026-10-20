@@ -31,7 +31,7 @@ function client(){
     }
   };
 }
-async function customer(){const c=client();assert.equal((await c.request()).status,200);return c}
+async function customer(){const c=client();assert.equal((await c.request()).status,200);assert.equal((await c.request('welcome',{customer_name:'Test visitor'})).status,200);return c}
 async function staff(){const c=client();assert.equal((await c.request('staff-login',STAFF)).status,200);return c}
 const stock=async id=>Number(await stack.sql(`select quantity_remaining from public.cookie_inventory where id='${id}'`));
 
@@ -123,6 +123,8 @@ test('anonymous and authenticated direct database/RPC requests are denied',async
       ['cookie_inventory','GET'],['cookie_orders','GET'],['cookie_sessions','GET'],['staff_members','GET'],
       ['cookie_inventory?id=eq.choc','PATCH',{quantity_remaining:999}],
       ['cookie_orders','POST',{cookie_id:'choc',quantity:1}],
+      ['rpc/set_customer_name','POST',{p_session_hash:'0'.repeat(64),p_customer_name:'Visitor'}],
+      ['rpc/place_named_cookie_order','POST',{p_session_hash:'0'.repeat(64),p_cookie_id:'choc'}],
       ['rpc/place_cookie_order','POST',{p_session_hash:'0'.repeat(64),p_cookie_id:'choc'}],
       ['rpc/set_cookie_inventory','POST',{p_staff_id:STAFF.id,p_cookie_id:'choc',p_quantity:999}],
       ['rpc/set_cookie_order_status','POST',{p_staff_id:STAFF.id,p_order_id:STAFF.id,p_status:'Ready'}]
@@ -252,4 +254,61 @@ test('name migration is repeatable and preserves stock, order data, and session 
   const retry=(await c.request('order',{cookie_id:'choc'})).data;
   assert.equal(retry.order.id,placed.id);assert.equal(retry.order.status,'Preparing');assert.equal(retry.already_ordered,true);
   assert.equal(await stock('matcha'),4);assert.equal(await stock('choc'),5);
+});
+
+test('a name is required before ordering and is saved on the existing anonymous session',async()=>{
+  const c=client();const initial=await c.request();const token=c.jar.get('seatspot_session');
+  assert.equal(initial.data.customer_name,null);
+  assert.equal((await c.request('order',{cookie_id:'choc',customer_name:'Forged'})).data.error.code,'NAME_REQUIRED');
+  assert.equal(await stock('choc'),5);
+  const saved=await c.request('welcome',{customer_name:'  Alyssa  '});
+  assert.equal(saved.data.customer_name,'Alyssa');assert.equal(c.jar.get('seatspot_session'),token);
+  assert.equal((await c.request()).data.customer_name,'Alyssa');
+  assert.equal((await c.request('welcome',{customer_name:'Different name'})).data.customer_name,'Alyssa');
+  const result=await c.request('order',{cookie_id:'choc',table_id:'B3',customer_name:'Forged'});
+  assert.equal(result.data.order.customer_name,'Alyssa');assert.equal(result.data.customer_name,'Alyssa');
+  assert.equal(result.data.order.table_id,'B3');assert.equal(result.data.order.quantity,1);
+  assert.equal(result.data.order.status,'New');assert(result.data.order.created_at);
+  assert.equal(await stack.sql('select customer_name from public.cookie_orders'),'Alyssa');
+  assert.equal((await c.request('order',{cookie_id:'red'})).data.order.id,result.data.order.id);
+  const list=(await (await staff()).request('staff-state')).data.orders;
+  assert.equal(list[0].customer_name,'Alyssa');assert.equal(await stock('red'),5);
+});
+
+test('name validation rejects blank, long, malformed and control-character names',async()=>{
+  const c=client();await c.request();
+  for(const customer_name of ['', '   ', 'a'.repeat(31), 'A\nB', 'A\0B', 42, null, {}]){
+    const result=await c.request('welcome',{customer_name});
+    assert.equal(result.status,400);assert.equal(result.data.error.code,'INVALID_NAME');
+  }
+  const result=await c.request('welcome',{customer_name:'ก'.repeat(30)});
+  assert.equal(result.status,200);assert.equal(result.data.customer_name.length,30);
+  assert.equal(Number(await stack.sql('select count(*) from public.cookie_orders')),0);
+});
+
+test('session expiry clears the name without exposing names from another session',async()=>{
+  const a=await customer(),b=client();await b.request();
+  assert.equal((await b.request()).data.customer_name,null);
+  await stack.sql("update public.cookie_sessions set expires_at=now()-interval '1 second'");
+  assert.equal((await a.request('welcome',{customer_name:'Alyssa'})).status,409);
+  const fresh=await a.request();assert.equal(fresh.data.customer_name,null);assert.equal(fresh.data.order,null);
+});
+
+test('customer-name migration upgrades existing data without resets and remains compatible with old ordering',async()=>{
+  const c=await customer();const ordered=(await c.request('order',{cookie_id:'red',table_id:'B12'})).data.order;
+  await stack.sql('drop function public.place_named_cookie_order(text,text,text); drop function public.set_customer_name(text,text); alter table public.cookie_sessions drop column customer_name; alter table public.cookie_orders drop column customer_name');
+  const snapshot=async()=>JSON.parse(await stack.sql("select json_build_object('inventory',(select json_agg(i order by id) from public.cookie_inventory i),'orders',(select json_agg(to_jsonb(o)-'customer_name' order by id) from public.cookie_orders o),'sessions',(select json_agg(to_jsonb(s)-'customer_name' order by session_hash) from public.cookie_sessions s))"));
+  const before=await snapshot();
+  const migration=await readFile(new URL('../supabase/add-customer-names.sql',import.meta.url),'utf8');
+  await stack.sql(migration);await stack.sql(migration);
+  assert.deepEqual(await snapshot(),before);
+  assert.equal((await c.request()).data.order.customer_name,null);
+  await c.request('welcome',{customer_name:'Alyssa'});
+  const retry=(await c.request('order',{cookie_id:'choc'})).data;
+  assert.equal(retry.order.id,ordered.id);assert.equal(retry.already_ordered,true);
+  assert.equal(retry.order.customer_name,null);assert.equal(await stock('choc'),5);assert.equal(await stock('red'),4);
+  // The old deployed API can continue using its existing RPC during rollout.
+  const old=client();await old.request();const hash=createHash('sha256').update(old.jar.get('seatspot_session')).digest('hex');
+  const response=await fetch(stack.restBase+'/rpc/place_cookie_order',{method:'POST',headers:{Authorization:`Bearer ${stack.serviceToken}`,'Content-Type':'application/json'},body:JSON.stringify({p_session_hash:hash,p_cookie_id:'choc'})});
+  assert.equal(response.status,200);
 });

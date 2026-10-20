@@ -9,7 +9,7 @@ import uuid
 def install_ordering_fixture(context):
     data = {'inventory': [dict(id=i, flavor=f, quantity_remaining=5, active=True)
                           for i, f in [('choc', 'Chocolate'), ('matcha', 'Original'), ('red', 'Red Velvet')]],
-            'order': None}
+            'order': None, 'customer_name': 'Test visitor', 'session_expires_at': '2099-01-01T00:00:00Z'}
 
     def handle(route):
         request = route.request
@@ -18,7 +18,7 @@ def install_ordering_fixture(context):
             item = next(i for i in data['inventory'] if i['id'] == body['cookie_id'])
             item['quantity_remaining'] -= 1
             data['order'] = dict(id=str(uuid.uuid4()), cookie_id=item['id'], cookie_flavor=item['flavor'],
-                                 quantity=1, table_id=body.get('table_id'), status='New',
+                                 customer_name=data['customer_name'], quantity=1, table_id=body.get('table_id'), status='New',
                                  created_at='2026-10-17T12:00:00Z')
         route.fulfill(status=200, content_type='application/json', body=json.dumps(data))
     context.route('**/api/seatspot?*', handle)

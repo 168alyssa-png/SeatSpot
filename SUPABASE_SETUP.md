@@ -2,6 +2,18 @@
 
 Complete steps 1–4 before the first backend deployment. Once Supabase setup is complete and deployment is authorized, pushing to the connected GitHub branch triggers Vercel. Never paste database passwords, service-role keys, or staff passwords into chat or GitHub.
 
+## Existing project: add the visitor-name feature before deploying
+
+Run the **complete** contents of [`supabase/add-customer-names.sql`](supabase/add-customer-names.sql) in a new Supabase SQL Editor query. The last line is `commit;`. Run the whole query without selecting only part of it. This migration is additive and repeatable; it does not delete or reset inventory, orders, sessions, or staff.
+
+It adds nullable `customer_name` fields to `cookie_sessions` and `cookie_orders`, plus two service-only functions: `set_customer_name` and `place_named_cookie_order`. Names are required for new orders through the updated API. The named-order function reuses the existing atomic ordering function inside the same database transaction, preserving stock checks, one-cookie enforcement, retries, and rollback. The old ordering function stays available to the previously deployed server during the migration, so SQL can be applied before releasing the new code.
+
+After the migration succeeds, confirm setup is complete before pushing/deploying this feature. There are no new environment variables, staff-account changes, or public database policies to configure. The SQL is also included in `setup.sql` for future setups or reruns.
+
+Customers enter a trimmed name of 1–30 characters before entering the site. The name is stored against the existing hashed anonymous session, never used as the session identity. It survives navigation, refresh, Leave Table, Reset, and reopening the site with the same active 24-hour cookie. The first name saved for a session stays fixed, including across tabs and retries. An optional same-tab `sessionStorage` cache uses the same expiry for continuity during connection failures; the server is authoritative, and persistence still works if browser storage is unavailable. An expired or new anonymous session asks for a name again. A name never resets the cookie allowance.
+
+New orders snapshot the session name alongside table, flavor, quantity, timestamp and status. Existing orders keep their original data: an unknown historical name remains null and displays **Guest** in staff view. Missing table numbers display **—**. The dashboard shows customer name, table, cookie, quantity, time ordered and status; UUIDs remain internal for status updates and are not shown as staff labels. Names render as literal text, with server/database validation and escaped customer summaries.
+
 ## 1. Create the Supabase project
 
 Sign in at https://supabase.com/dashboard and create a project (the Free plan works for this exhibition). Choose a database password and keep it in your password manager. Wait until the project is ready. A dedicated SeatSpot project avoids conflicts with existing database objects.
@@ -13,8 +25,8 @@ Open **SQL Editor → New query**. Copy the complete contents of [`supabase/setu
 | Table | Purpose |
 | --- | --- |
 | `cookie_inventory` | Three flavors, quantity remaining, active flag, automatically derived sold-out flag, updated timestamp |
-| `cookie_orders` | UUID order ID, flavor, quantity fixed to 1, optional table ID, timestamp, New/Preparing/Ready status |
-| `cookie_sessions` | Hashed anonymous customer session identity, creation and expiry times; unique order per session |
+| `cookie_orders` | Internal UUID order ID, customer name, flavor, quantity fixed to 1, optional table ID, timestamp, New/Preparing/Ready status |
+| `cookie_sessions` | Hashed anonymous session identity, customer name, creation and expiry times; unique order per session |
 | `staff_members` | Allowlist of Supabase Auth user IDs allowed to manage stock and orders |
 
 The SQL also creates the atomic ordering and staff update functions, enables row-level security, and removes customer access to database writes. Rerunning the file preserves existing orders and quantities. Initial stock is **zero** for every flavor; enter the actual quantities in `/admin` after signing in. Zero stock displays **Sold out**. An inactive flavor with stock displays **Unavailable**.
@@ -65,8 +77,8 @@ After the SQL, staff allowlist, and Production environment variables are configu
 
 1. In `/admin`, set Chocolate stock to 1 and give the other two flavors their actual quantities. Verify active flags are enabled for flavors being offered.
 2. Open the customer site in two separate browser profiles or devices. Both should display the same counts, updated automatically every three seconds while visible.
-3. Claim B3 through `?table=B3` or the real QR flow. Select Chocolate and press **Place order**. Confirm flavor and Table B3 appear; staff should see one New order. The other customer should see 0 remaining / Sold out and a disabled Chocolate button.
-4. Have the second customer order another flavor without claiming a table. Staff should see **No table**. The app allows ordering without table check-in.
+3. Enter a name on the welcome screen, then claim B3 through `?table=B3` or the real QR flow. Select Chocolate and press **Place order**. Confirm flavor and Table B3 appear; staff should see one New order. The other customer should see 0 remaining / Sold out and a disabled Chocolate button.
+4. Have the second customer order another flavor without claiming a table. Staff should see **—** for the table. The app allows ordering without table check-in.
 5. Move an order through **Preparing** and **Ready** in `/admin`. The customer progress display should follow the actual staff status. **Confirm pickup** acknowledges collection locally; it does not restore the one-cookie allowance or remove the order.
 6. Refresh, leave the table, or use Reset prototype. The original order and ordering lock should remain for that session. Test Home scanning, map QR verification/mismatch, filters, and leaving tables as usual.
 7. Restore actual physical stock through `/admin` after testing. Test orders remain in the dashboard; avoid deleting real orders or resetting inventory during the event.

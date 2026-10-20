@@ -49,13 +49,17 @@ class BackendUITests(unittest.TestCase):
             context.close()
         self.assertEqual(self.errors, [])
 
-    def page(self, path='/', width=390):
+    def page(self, path='/', width=390, name='Test visitor'):
         context = self.browser.new_context(viewport={'width':width,'height':844})
         self.contexts.append(context)
         page = context.new_page()
         page.set_default_timeout(10000)
         page.on('pageerror', lambda error:self.errors.append(str(error)))
         page.goto(self.urls['base']+path)
+        if not path.startswith('/admin') and name is not None:
+            page.locator('#customerName').fill(name)
+            page.locator('#welcomeContinue').click()
+            expect(page.locator('#welcomeScreen')).to_be_hidden()
         return page
 
     def orders(self, page):
@@ -119,6 +123,8 @@ class BackendUITests(unittest.TestCase):
         customer.locator('#cartAction').click()
         row=staff.locator('#staffOrders tr')
         expect(row).to_have_count(1)
+        expect(row.locator('td').first).to_have_text('Test visitor')
+        self.assertNotRegex(row.inner_text(), r'[0-9a-f]{8}-[0-9a-f]{4}-')
         expect(row).to_contain_text('B12')
         expect(row).to_contain_text('Red Velvet')
         expect(row.locator('td').nth(4)).not_to_be_empty()
@@ -176,3 +182,72 @@ class BackendUITests(unittest.TestCase):
         page.locator('#retryInventory').click()
         expect(page.locator('#inventoryStatus')).to_contain_text('Stock is shared')
         expect(page.locator('#menu button:enabled')).to_have_count(3)
+
+    def test_welcome_required_qr_preserved_and_name_survives_reload_leave_and_reset(self):
+        page=self.page('/?table=B3',name=None)
+        expect(page.locator('#welcomeScreen')).to_be_visible()
+        expect(page.locator('#seatspotApp')).to_be_hidden()
+        expect(page.locator('#customerName')).to_have_attribute('maxlength','30')
+        page.locator('#customerName').fill('   ')
+        page.locator('#welcomeContinue').click()
+        expect(page.locator('#welcomeMessage')).to_contain_text('Enter a name')
+        expect(page.locator('#seatspotApp')).to_be_hidden()
+        page.locator('#customerName').fill('Alyssa')
+        page.locator('#welcomeContinue').click()
+        expect(page.locator('#welcomeScreen')).to_be_hidden()
+        expect(page.get_by_role('heading',name='Claim Table B3?',exact=True)).to_be_visible()
+        page.get_by_role('button',name='Claim Table B3',exact=True).click()
+        self.orders(page)
+        page.locator('[data-cookie="matcha"] .cookie-select').click()
+        page.locator('#cartAction').click()
+        expect(page.locator('#cartSummary')).to_contain_text('Alyssa')
+        expect(page.locator('#cartSummary')).to_contain_text('Table B3')
+        page.locator('.nav [data-page="map"]').click()
+        page.locator('#selectedAction').click()
+        page.locator('.nav [data-page="profile"]').click()
+        page.get_by_role('button',name='Reset prototype',exact=True).click()
+        self.orders(page)
+        expect(page.locator('#menu button:disabled')).to_have_count(3)
+        page.reload()
+        expect(page.locator('#welcomeScreen')).to_be_hidden()
+        if page.locator('#modal').is_visible():
+            page.get_by_role('button',name='Not now',exact=True).click()
+        self.orders(page)
+        expect(page.locator('#cartSummary')).to_contain_text('Alyssa')
+        expect(page.locator('#menu button:disabled')).to_have_count(3)
+        # A separate tab restores the server name even with sessionStorage cleared.
+        tab=page.context.new_page()
+        tab.goto(self.urls['base'])
+        expect(tab.locator('#welcomeScreen')).to_be_hidden()
+        expect(tab.locator('#seatspotApp')).to_be_visible()
+
+    def test_name_is_literal_text_on_customer_and_staff_views_and_no_table_is_dash(self):
+        name='<img src=x onerror=alert(1)>'
+        page=self.page(name=name)
+        self.orders(page)
+        page.locator('[data-cookie="choc"] .cookie-select').click()
+        page.locator('#cartAction').click()
+        expect(page.locator('#cartSummary')).to_contain_text(name)
+        expect(page.locator('#cartSummary img')).to_have_count(0)
+        staff=self.page('/admin')
+        self.login(staff)
+        row=staff.locator('#staffOrders tr')
+        expect(row.locator('td').nth(0)).to_have_text(name)
+        expect(row.locator('td').nth(1)).to_have_text('—')
+        expect(row.locator('td').nth(3)).to_have_text('1')
+        expect(row.locator('img')).to_have_count(0)
+        self.assertNotRegex(row.inner_text(),r'[0-9a-f]{8}-[0-9a-f]{4}-')
+        for button in row.get_by_role('button').all():
+            self.assertNotRegex(button.get_attribute('aria-label'),r'[0-9a-f]{8}-[0-9a-f]{4}-')
+
+    def test_new_visitor_requires_name_when_storage_is_unavailable(self):
+        page=self.page(name=None)
+        page.add_init_script("(() => {Storage.prototype.setItem=()=>{throw new Error('disabled')};Storage.prototype.getItem=()=>{throw new Error('disabled')};})();")
+        page.reload()
+        page.locator('#customerName').fill('Guest name')
+        page.locator('#welcomeContinue').click()
+        expect(page.locator('#welcomeScreen')).to_be_hidden()
+        page.reload()
+        expect(page.locator('#welcomeScreen')).to_be_hidden()
+        self.orders(page)
+        expect(page.locator('#cartAction')).to_be_disabled()

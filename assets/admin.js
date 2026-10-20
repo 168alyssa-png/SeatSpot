@@ -51,7 +51,7 @@
     const fragment=document.createDocumentFragment();
     for(const order of orders){
       const row=document.createElement('tr');row.dataset.order=order.id;
-      for(const value of [order.id,order.table_id||'No table',order.cookie_flavor,String(order.quantity),new Date(order.created_at).toLocaleString()]){
+      for(const value of [order.customer_name||'Guest',order.table_id||'—',order.cookie_flavor,String(order.quantity),new Date(order.created_at).toLocaleString()]){
         const cell=document.createElement('td');cell.textContent=value;row.append(cell);
       }
       const actions=document.createElement('td');
@@ -59,7 +59,7 @@
       const buttons=document.createElement('div');buttons.className='status-buttons';
       for(const status of ['New','Preparing','Ready']){
         const button=document.createElement('button');button.type='button';button.className='btn secondary';button.textContent=status;
-        button.disabled=busy||status===order.status;button.setAttribute('aria-label',`Mark order ${order.id} ${status}`);
+        button.disabled=busy||status===order.status;button.setAttribute('aria-label',`Mark order for ${order.customer_name||'Guest'} ${status}`);
         button.addEventListener('click',()=>mutate('order-status',{order_id:order.id,status}));buttons.append(button);
       }
       actions.append(buttons);row.append(actions);fragment.append(row);
