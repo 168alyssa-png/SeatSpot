@@ -1,6 +1,7 @@
 const menu = [
+  {id:'original',name:'Original Cookie',price:45,cls:'original'},
   {id:'choc',name:'Chocolate Cookie',price:45,cls:''},
-  {id:'matcha',name:'Original Cookie',price:45,cls:'original'},
+  {id:'matcha',name:'Matcha Cookie',price:45,cls:'matcha'},
   {id:'red',name:'Red Velvet Cookie',price:49,cls:'redv'}
 ];
 const visitor = {name:null,ready:false,pending:false,entered:false};
@@ -100,7 +101,7 @@ async function placeOrder(){
   const selected=cookieState.selected;
   renderMenu();
   try{
-    const snapshot=await SeatSpotAPI.request('order',{cookie_id:selected,quantity:1,table_id:state.claimed||null});
+    const snapshot=await SeatSpotAPI.request('order',{catalog_version:'four-flavors-v1',cookie_id:selected,quantity:1,table_id:state.claimed||null});
     applyCookieSnapshot(snapshot);
     toast(`${snapshot.already_ordered?'Already ordered':'Order placed'}: ${snapshot.order.cookie_flavor}`);
   }catch(error){

@@ -73,7 +73,7 @@ export async function startStack() {
         }
         if(url.pathname==='/__test__/stock'){
           const b=JSON.parse(raw);
-          if(!['choc','matcha','red'].includes(b.cookie_id)||!Number.isInteger(b.quantity)||b.quantity<0)throw new Error('Bad fixture');
+          if(!['original','choc','matcha','red'].includes(b.cookie_id)||!Number.isInteger(b.quantity)||b.quantity<0)throw new Error('Bad fixture');
           await sql(`update public.cookie_inventory set quantity_remaining=${b.quantity},active=${b.active!==false} where id='${b.cookie_id}'`);
           res.end(JSON.stringify({ok:true}));return;
         }

@@ -2,6 +2,16 @@
 
 Complete steps 1–4 before the first backend deployment. Once Supabase setup is complete and deployment is authorized, pushing to the connected GitHub branch triggers Vercel. Never paste database passwords, service-role keys, or staff passwords into chat or GitHub.
 
+## Existing project: migrate safely to four flavors BEFORE deploying
+
+The new IDs are `original` → Original, `choc` → Chocolate, `matcha` → Matcha, and `red` → Red Velvet. In the previous three-flavor app, `matcha` represented Original, even if an older stored text label still said something else. Do not simply change that row's label: that would turn Original stock and order history into Matcha.
+
+Run the **complete** contents of [`supabase/add-four-cookie-flavors.sql`](supabase/add-four-cookie-flavors.sql) in a new Supabase SQL Editor query. The final line is `commit;`. This transaction broadens the ID constraint, enables cascading ID updates for order references, renames the existing Original row from `matcha` to `original` without changing its quantity or active flag, updates its linked order IDs and Original label, and inserts a NEW `matcha`/Matcha row at zero stock. Chocolate and Red Velvet quantities and active flags remain untouched. Order UUIDs, customer names, table IDs, order quantities, time ordered, statuses, session hashes, expiry times and one-cookie allowances are preserved. Last-modified timestamps may update when IDs/labels change. A failed migration rolls back as a whole. It is safe to rerun after stocking Matcha: it does not move or reset already-migrated stock.
+
+Run this during a quiet period and confirm success before the code is committed/pushed/deployed. Until the new app is released, the old three-flavor menu can temporarily show Original as sold out because its old ID is now the new zero-stock Matcha row. **Do not stock the new Matcha row until the four-flavor deployment is live.** After release, use `/admin` to enter actual Matcha stock; do not copy the existing Original quantity into Matcha. Original retains its real existing stock. New setups also start all four flavors at zero.
+
+Older open tabs must refresh before placing an order after release: the API checks a menu-version field so a stale Original menu card cannot order the repurposed Matcha ID. This does not change the anonymous session or reset the one-cookie-total rule. There are no new environment variables, public write policies, or staff-account changes. Existing table/QR/name/status flows are preserved. Apply this migration before rerunning `setup.sql`; the setup script refuses to reinterpret an unmigrated three-flavor database.
+
 ## Existing project: add the visitor-name feature before deploying
 
 Run the **complete** contents of [`supabase/add-customer-names.sql`](supabase/add-customer-names.sql) in a new Supabase SQL Editor query. The last line is `commit;`. Run the whole query without selecting only part of it. This migration is additive and repeatable; it does not delete or reset inventory, orders, sessions, or staff.
@@ -24,7 +34,7 @@ Open **SQL Editor → New query**. Copy the complete contents of [`supabase/setu
 
 | Table | Purpose |
 | --- | --- |
-| `cookie_inventory` | Three flavors, quantity remaining, active flag, automatically derived sold-out flag, updated timestamp |
+| `cookie_inventory` | Four flavors, quantity remaining, active flag, automatically derived sold-out flag, updated timestamp |
 | `cookie_orders` | Internal UUID order ID, customer name, flavor, quantity fixed to 1, optional table ID, timestamp, New/Preparing/Ready status |
 | `cookie_sessions` | Hashed anonymous session identity, customer name, creation and expiry times; unique order per session |
 | `staff_members` | Allowlist of Supabase Auth user IDs allowed to manage stock and orders |
@@ -102,8 +112,6 @@ python3 -m unittest discover -s tests -v
 
 The database/API tests and backend browser tests require Docker with `postgres:17-alpine` and `postgrest/postgrest:v13.0.7`; Python tests also require Playwright and Chromium. Tests launch isolated disposable local databases and do not touch your Supabase project or use `.env.local` credentials. Local Supabase Auth is a test fixture; the production Auth connection must be checked after you finish setup. Camera tests exercise the actual video/canvas/jsQR decoder in Chromium using QR video fixtures. Physical iPhone Safari and Android Chrome testing is still recommended for camera permission behavior.
 
-## Flavor names and existing installations
+## Flavor labels
 
-Stable database IDs are unchanged: `matcha` displays **Original**, `choc` displays **Chocolate**, and `red` displays **Red Velvet**. The API uses these names for inventory, order confirmations, and the staff dashboard, including records created before the rename. No migration is needed for the website to display the new names.
-
-To synchronize the stored inventory and order flavor text too, run the complete contents of [`supabase/rename-cookie-flavors.sql`](supabase/rename-cookie-flavors.sql) once in Supabase SQL Editor. It changes names only; stock, IDs, quantities, statuses, sessions, and the one-cookie rule are preserved. No SQL function or environment-variable changes are needed. New setups seed the new names automatically; rerunning `setup.sql` also updates inventory names while preserving quantities.
+Current labels are Original (`original`), Chocolate (`choc`), Matcha (`matcha`), and Red Velvet (`red`). The API uses these labels in inventory, order confirmations and the staff dashboard. The former text-only `rename-cookie-flavors.sql` is for an already migrated FOUR-flavor database only; it refuses to run without `original`. Use `add-four-cookie-flavors.sql` for the existing three-flavor installation, not the old text-only script.

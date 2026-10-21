@@ -401,14 +401,14 @@ class PrototypeTests(unittest.TestCase):
         self.item("Chocolate Cookie").locator(".cookie-select").click()
         self.page.locator("#cartAction").click()
         expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
-        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
+        expect(self.page.locator("#menu button:disabled")).to_have_count(4)
         for status, steps in (("Preparing", 2), ("Ready", 3)):
             self.backend['order']['status'] = status
             self.page.evaluate("refreshCustomerOrders()")
             expect(self.page.locator(".progress .active")).to_have_count(steps)
         self.page.locator("#cartAction").click()
         expect(self.page.locator("#cartAction")).to_have_text("Collected ✓")
-        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
+        expect(self.page.locator("#menu button:disabled")).to_have_count(4)
         expect(self.page.locator("#orderTableTitle")).to_have_text("Table B3")
 
     def test_leave_and_reset_preserve_cookie_session_limit(self):
@@ -418,12 +418,12 @@ class PrototypeTests(unittest.TestCase):
         self.page.locator("#selectedAction").click()
         self.nav("orders")
         expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
-        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
+        expect(self.page.locator("#menu button:disabled")).to_have_count(4)
         self.nav("profile")
         self.page.get_by_role("button", name="Reset prototype", exact=True).click()
         self.nav("orders")
         expect(self.page.locator("#cartSummary")).to_contain_text("Chocolate")
-        expect(self.page.locator("#menu button:disabled")).to_have_count(3)
+        expect(self.page.locator("#menu button:disabled")).to_have_count(4)
         expect(self.page.locator("#orderTableTitle")).to_have_text("your table")
 
     def test_mobile_and_desktop_controls_fit_without_horizontal_overflow(self):

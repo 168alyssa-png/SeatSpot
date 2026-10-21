@@ -8,7 +8,7 @@ import uuid
 
 def install_ordering_fixture(context):
     data = {'inventory': [dict(id=i, flavor=f, quantity_remaining=5, active=True)
-                          for i, f in [('choc', 'Chocolate'), ('matcha', 'Original'), ('red', 'Red Velvet')]],
+                          for i, f in [('original', 'Original'), ('choc', 'Chocolate'), ('matcha', 'Matcha'), ('red', 'Red Velvet')]],
             'order': None, 'customer_name': 'Test visitor', 'session_expires_at': '2099-01-01T00:00:00Z'}
 
     def handle(route):

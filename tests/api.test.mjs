@@ -16,6 +16,7 @@ function client(){
   return {
     jar,
     async request(action='state',body,extra={}){
+      if(action==='order'&&body)body={catalog_version:'four-flavors-v1',...body};
       const headers={Cookie:[...jar].map(([k,v])=>`${k}=${v}`).join('; '),...extra.headers};
       if(body!==undefined){headers.Origin=extra.origin??stack.base;headers['Content-Type']='application/json';}
       const response=await fetch(`${stack.base}/api/seatspot?action=${action}`,{
@@ -46,7 +47,7 @@ test('missing configuration fails closed without exposing environment names or v
 
 test('stock is read-only and a customer gets an opaque HttpOnly session',async()=>{
   const c=client();const result=await c.request();
-  assert.equal(result.status,200);assert.equal(result.data.inventory.length,3);
+  assert.equal(result.status,200);assert.equal(result.data.inventory.length,4);
   assert(result.data.inventory.every(item=>item.quantity_remaining===5));
   assert.equal(result.data.order,null);
   const cookie=result.headers.getSetCookie()[0];
@@ -73,7 +74,7 @@ test('a customer without table check-in can order; reload restores the same orde
 
 test('retries and different flavor attempts return the original order without another decrement',async()=>{
   const c=await customer();const first=await c.request('order',{cookie_id:'choc',table_id:'A12'});
-  for(const cookie_id of ['choc','red','matcha']){
+  for(const cookie_id of ['original','choc','red','matcha']){
     const retry=await c.request('order',{cookie_id,table_id:'C1'});
     assert.equal(retry.status,200);assert.equal(retry.data.already_ordered,true);
     assert.equal(retry.data.order.id,first.data.order.id);assert.equal(retry.data.order.table_id,'A12');
@@ -92,10 +93,10 @@ test('20 simultaneous customers competing for the last cookie cannot oversell',a
 
 test('simultaneous different-flavor requests from one session create exactly one order',async()=>{
   const c=await customer();
-  const results=await Promise.all(Array.from({length:24},(_,i)=>c.request('order',{cookie_id:['choc','matcha','red'][i%3]})));
+  const results=await Promise.all(Array.from({length:24},(_,i)=>c.request('order',{cookie_id:['original','choc','matcha','red'][i%4]})));
   assert(results.every(r=>r.status===200));
   assert.equal(new Set(results.map(r=>r.data.order.id)).size,1);
-  assert.equal(Number(await stack.sql('select sum(quantity_remaining) from public.cookie_inventory')),14);
+  assert.equal(Number(await stack.sql('select sum(quantity_remaining) from public.cookie_inventory')),19);
   assert.equal(Number(await stack.sql('select count(*) from public.cookie_orders')),1);
 });
 
@@ -172,7 +173,7 @@ test('staff can move orders between all three statuses; customer sees actual sta
     assert.equal((await c.request()).data.order.status,status);
   }
   const list=(await admin.request('staff-state')).data.orders;
-  assert.equal(list[0].table_id,'C11');assert.equal(list[0].cookie_flavor,'Original');assert(!('session_hash' in list[0]));
+  assert.equal(list[0].table_id,'C11');assert.equal(list[0].cookie_flavor,'Matcha');assert(!('session_hash' in list[0]));
   assert.equal((await admin.request('order-status',{order_id:placed.data.order.id,status:'Deleted'})).status,400);
 });
 
@@ -220,8 +221,8 @@ test('rerunning setup preserves stock, orders, and staff; static output excludes
 
 test('existing inventory and orders display renamed flavors before a database migration',async()=>{
   // Deliberate legacy fixtures: deployed databases may still store the old names.
-  const names={choc:'Chocolate',matcha:'Original',red:'Red Velvet'};
-  await stack.sql("update public.cookie_inventory set flavor=case id when 'choc' then 'Chocolate Chip' when 'matcha' then 'Matcha' else 'Red Velvet' end");
+  const names={original:'Original',choc:'Chocolate',matcha:'Matcha',red:'Red Velvet'};
+  await stack.sql("update public.cookie_inventory set flavor=case id when 'choc' then 'Chocolate Chip' when 'original' then 'Legacy Original' when 'matcha' then 'Legacy Matcha' else 'Red Velvet' end");
   try{
     const admin=await staff();
     for(const [id,name] of Object.entries(names)){
@@ -235,7 +236,7 @@ test('existing inventory and orders display renamed flavors before a database mi
     for(const item of snapshot.inventory)assert.equal(item.flavor,names[item.id]);
     for(const order of snapshot.orders)assert.equal(order.cookie_flavor,names[order.cookie_id]);
     const adjusted=await admin.request('inventory',{cookie_id:'matcha',adjustment:1});
-    assert.equal(adjusted.data.inventory.flavor,'Original');
+    assert.equal(adjusted.data.inventory.flavor,'Matcha');
   }finally{
     await stack.sql(await readFile(new URL('../supabase/rename-cookie-flavors.sql',import.meta.url),'utf8'));
   }
@@ -249,8 +250,8 @@ test('name migration is repeatable and preserves stock, order data, and session 
   const migration=await readFile(new URL('../supabase/rename-cookie-flavors.sql',import.meta.url),'utf8');
   await stack.sql(migration);await stack.sql(migration);
   assert.deepEqual(await snapshot(),before);
-  assert.equal(await stack.sql("select flavor from public.cookie_inventory where id='matcha'"),'Original');
-  assert.equal(await stack.sql('select cookie_flavor from public.cookie_orders'),'Original');
+  assert.equal(await stack.sql("select flavor from public.cookie_inventory where id='matcha'"),'Matcha');
+  assert.equal(await stack.sql('select cookie_flavor from public.cookie_orders'),'Matcha');
   const retry=(await c.request('order',{cookie_id:'choc'})).data;
   assert.equal(retry.order.id,placed.id);assert.equal(retry.order.status,'Preparing');assert.equal(retry.already_ordered,true);
   assert.equal(await stock('matcha'),4);assert.equal(await stock('choc'),5);
@@ -311,4 +312,33 @@ test('customer-name migration upgrades existing data without resets and remains 
   const old=client();await old.request();const hash=createHash('sha256').update(old.jar.get('seatspot_session')).digest('hex');
   const response=await fetch(stack.restBase+'/rpc/place_cookie_order',{method:'POST',headers:{Authorization:`Bearer ${stack.serviceToken}`,'Content-Type':'application/json'},body:JSON.stringify({p_session_hash:hash,p_cookie_id:'choc'})});
   assert.equal(response.status,200);
+});
+
+test('all four flavors can be stocked and ordered, but one session still gets only one cookie total',async()=>{
+  const admin=await staff();
+  for(const [id,flavor] of Object.entries({original:'Original',choc:'Chocolate',matcha:'Matcha',red:'Red Velvet'})){
+    const c=await customer();
+    assert.equal((await admin.request('inventory',{cookie_id:id,quantity:3})).status,200);
+    assert.equal((await admin.request('inventory',{cookie_id:id,adjustment:1})).status,200);
+    const ordered=(await c.request('order',{cookie_id:id})).data;
+    assert.equal(ordered.order.cookie_id,id);assert.equal(ordered.order.cookie_flavor,flavor);
+    assert.equal(ordered.order.quantity,1);assert.equal(ordered.order.customer_name,'Test visitor');
+    assert.equal(await stock(id),3);
+    const other=id==='original'?'matcha':'original';const remaining=await stock(other);
+    assert.equal((await c.request('order',{cookie_id:other})).data.order.id,ordered.order.id);
+    assert.equal(await stock(other),remaining);
+    await admin.request('inventory',{cookie_id:id,quantity:0});
+    assert.equal((await (await customer()).request('order',{cookie_id:id})).data.error.code,'SOLD_OUT');
+  }
+  assert.equal(Number(await stack.sql('select count(*) from public.cookie_orders')),4);
+});
+
+test('an older open menu cannot confuse the repurposed Matcha ID with Original',async()=>{
+  const c=await customer();
+  for(const catalog_version of [undefined,'old-menu']){
+    const result=await c.request('order',{cookie_id:'matcha',catalog_version});
+    assert.equal(result.status,409);assert.equal(result.data.error.code,'CATALOG_UPDATED');
+  }
+  assert.equal(await stock('original'),5);assert.equal(await stock('matcha'),5);
+  assert.equal(Number(await stack.sql('select count(*) from public.cookie_orders')),0);
 });

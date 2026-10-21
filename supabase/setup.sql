@@ -1,9 +1,10 @@
 -- SeatSpot: run this entire file once in the Supabase SQL Editor.
+-- Existing three-flavor projects must run add-four-cookie-flavors.sql FIRST.
 -- Safe to rerun: existing stock and orders are NOT reset by the seed inserts.
 begin;
 
 create table if not exists public.cookie_inventory (
-  id text primary key check (id in ('choc', 'matcha', 'red')),
+  id text primary key check (id in ('original', 'choc', 'matcha', 'red')),
   flavor text not null unique,
   quantity_remaining integer not null default 0 check (quantity_remaining between 0 and 1000000),
   active boolean not null default true,
@@ -21,7 +22,7 @@ create table if not exists public.cookie_sessions (
 create table if not exists public.cookie_orders (
   id uuid primary key default gen_random_uuid(),
   session_hash text not null unique references public.cookie_sessions(session_hash),
-  cookie_id text not null references public.cookie_inventory(id),
+  cookie_id text not null references public.cookie_inventory(id) on update cascade,
   cookie_flavor text not null,
   quantity integer not null default 1 check (quantity = 1),
   table_id text check (table_id is null or table_id ~ '^[ABC]([1-9]|1[0-2])$'),
@@ -36,9 +37,19 @@ create table if not exists public.staff_members (
   created_at timestamptz not null default now()
 );
 
+do $$
+begin
+  if exists (select 1 from public.cookie_inventory where id = 'matcha')
+     and not exists (select 1 from public.cookie_inventory where id = 'original') then
+    raise exception 'Run supabase/add-four-cookie-flavors.sql before this setup script.';
+  end if;
+end;
+$$;
+
 insert into public.cookie_inventory (id, flavor, quantity_remaining, active) values
+  ('original', 'Original', 0, true),
   ('choc', 'Chocolate', 0, true),
-  ('matcha', 'Original', 0, true),
+  ('matcha', 'Matcha', 0, true),
   ('red', 'Red Velvet', 0, true)
 on conflict (id) do update set flavor = excluded.flavor;
 

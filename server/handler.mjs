@@ -1,7 +1,8 @@
 import { randomBytes, createHash } from 'node:crypto';
 
-const COOKIE_FLAVORS = Object.freeze({choc:'Chocolate',matcha:'Original',red:'Red Velvet'});
-const COOKIE_IDS = new Set(['choc', 'matcha', 'red']);
+const COOKIE_FLAVORS = Object.freeze({original:'Original',choc:'Chocolate',matcha:'Matcha',red:'Red Velvet'});
+const COOKIE_ORDER = Object.keys(COOKIE_FLAVORS);
+const COOKIE_IDS = new Set(COOKIE_ORDER);
 const STATUSES = new Set(['New', 'Preparing', 'Ready']);
 const ORDER_FIELDS = 'id,customer_name,cookie_id,cookie_flavor,quantity,table_id,created_at,updated_at,status';
 const INVENTORY_FIELDS = 'id,flavor,quantity_remaining,active,sold_out,updated_at';
@@ -117,7 +118,7 @@ export function createHandler({ env = process.env, fetchImpl = fetch } = {}) {
       };
       const rest = (resource, options) => request(`/rest/v1/${resource}`, options);
       const rpc = (name, body) => rest(`rpc/${name}`, { method: 'POST', body });
-      const inventory = async () => (await rest(`cookie_inventory?select=${INVENTORY_FIELDS}&order=id.asc`)).map(publicInventory);
+      const inventory = async () => (await rest(`cookie_inventory?select=${INVENTORY_FIELDS}&order=id.asc`)).map(publicInventory).sort((a,b)=>COOKIE_ORDER.indexOf(a.id)-COOKIE_ORDER.indexOf(b.id));
       const cookieValues = cookies(req);
       async function session(create = false) {
         const token = cookieValues[SESSION_COOKIE];
@@ -179,6 +180,7 @@ export function createHandler({ env = process.env, fetchImpl = fetch } = {}) {
         return send(200, {customer_name:saved,session_expires_at:current.expires_at});
       }
       if (action === 'order') {
+        if (body.catalog_version !== 'four-flavors-v1') fail(409, 'CATALOG_UPDATED', 'The cookie menu has changed. Refresh this page before ordering.');
         if (!COOKIE_IDS.has(body.cookie_id)) fail(400, 'INVALID_COOKIE', 'Choose a valid cookie flavor.');
         if (body.quantity !== undefined && body.quantity !== 1) fail(400, 'ONE_COOKIE_ONLY', 'You may order one cookie per session.');
         const table = body.table_id ?? null;
